@@ -29,12 +29,11 @@
 ---
 
 ## 🛠️ Skills & Tools  
-- **Programming:** Python (NumPy, Pandas, Scikit-learn, TensorFlow, PyTorch, Matplotlib, Seaborn)  
+- **Programming:** Python (NumPy, Pandas, Scikit-learn, TensorFlow, PyTorch, Matplotlib, Seaborn) & R  
 - **Data Science:** Machine Learning, Functional Data Analysis, Clustering, Regression, Neural Networks  
 - **Other:** Git, Jupyter Notebook, LaTeX  
 
 ---
 
 ## 📫 Connect with me  
-- 💼 [LinkedIn](www.linkedin.com/in/moubarak-lassissi-610b87202)  
 - 📧 Email: lassissimoubarak20@gmail.com   
