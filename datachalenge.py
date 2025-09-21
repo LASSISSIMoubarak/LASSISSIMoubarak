@@ -209,8 +209,6 @@ gdown.download(url, output, quiet=False)
 # Now read the downloaded CSV file
 test_x = pd.read_csv(output, header=0, sep=',')
 
-# ... (previous code for creating station_mapping and applying it to train_x) ...
-
 # Apply mapping to test_x
 test_x['station_num'] = test_x['station'].map(station_mapping)
 
