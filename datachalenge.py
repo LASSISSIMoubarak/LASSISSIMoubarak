@@ -38,8 +38,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from skfda import FDataGrid
 import gdown
-
-
 from google.colab import drive
 drive.mount('/content/drive')
 
@@ -206,7 +204,6 @@ url = f"https://drive.google.com/uc?id={file_id}"
 output = "test_x.csv"
 gdown.download(url, output, quiet=False)
 
-# Now read the downloaded CSV file
 test_x = pd.read_csv(output, header=0, sep=',')
 
 # Apply mapping to test_x
@@ -215,7 +212,6 @@ test_x['station_num'] = test_x['station'].map(station_mapping)
 # Handle unknown stations (optional)
 test_x['station_num'] = test_x['station'].map(station_mapping).fillna(-1).astype(int)
 
-# ... (rest of your code) ...
 
 test_x['date'] = pd.to_datetime(test_x['date'])
 
@@ -365,11 +361,6 @@ fd_reconstructed = FDataBasis(basis=fourier_basis, coefficients=predicted_fourie
 days = np.linspace(0, 151, 152)   #1er janvier au 31 mai
 reconstructed_values = fd_reconstructed.evaluate(days)
 
-
-print(reconstructed_values.shape)
-
-from skfda.representation.basis import FourierBasis, FDataBasis
-import numpy as np
 
 #2
 fd_reconstructed = FDataBasis(fourier_basis, predicted_fourier_coeffs)
