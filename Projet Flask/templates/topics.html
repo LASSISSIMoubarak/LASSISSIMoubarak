@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Topics - Pythonpédia</title>
+    <style>
+        body { font-family: Arial; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .topic-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .topic-card { 
+            background: white; 
+            padding: 25px; 
+            border-radius: 10px; 
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            border-left: 5px solid #4CAF50;
+            transition: transform 0.2s;
+        }
+        .topic-card:hover { transform: translateY(-5px); }
+        .topic-title { 
+            font-size: 1.4em; 
+            color: #2c3e50; 
+            margin-bottom: 10px;
+            text-decoration: none;
+        }
+        .topic-stats { color: #7f8c8d; font-size: 0.9em; }
+        .back-btn { 
+            display: inline-block; 
+            margin-bottom: 20px; 
+            color: #3498db; 
+            text-decoration: none; 
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('home') }}" class="back-btn">Retour à l'accueil</a>
+    
+    <div class="header">
+        <h1>📚 Tous les Topics</h1>
+        <p>Sélectionnez un topic pour explorer ses ressources</p>
+    </div>
+
+    <div class="topic-grid">
+        {% for topic in topics %}
+        <a href="{{ url_for('topic_items', topic_name=topic) }}" style="text-decoration: none;">
+            <div class="topic-card">
+                <div class="topic-title">
+                    {% if topic == "GraphicOptimization" %} 📊 
+                    {% elif topic == "TorchOptimization" %} 🧠
+                    {% elif topic == "SparkFlaskIntegration" %} ⚡
+                    {% elif topic == "Machinelearning_model" %} 🤖
+                    {% else %}  {% endif %}
+                    {{ topic }}
+                </div>
+                <div class="topic-stats">
+                    {{ stats[topic].items_count }} catégories • 
+                    {{ stats[topic].total_urls }} ressources
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</body>
+</html>

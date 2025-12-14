@@ -1,0 +1,175 @@
+---
+title: "Analyse PCA et ASCA Interactive"
+author: "Moubarak Lassissi"
+output: pdf_document
+runtime: shiny
+---
+
+```{r setup,include=FALSE}
+library(shiny)
+library(tidyverse)
+library(FactoMineR)
+library(factoextra)
+library(pls)
+library(limpca)
+library(ggrepel)
+library(plotly)
+load("RedLosses_M2IS.RData")
+
+only <- function(col) {
+  all(col == 0)
+}
+more <- function(col) {
+  sum(col == 0) / length(col) > 0.5
+}
+dV1 <- DV %>%
+  select(-which(sapply(., only))) %>%
+  select(-which(sapply(., more)))
+dm1 <- DM_CLR %>%
+  select(-which(sapply(., only))) %>%
+  select(-which(sapply(., more)))
+print(dV1)
+
+dv2 <- dV1[,-c(1,2,3,4)]  
+ACP <- PCA(dv2, scale.unit = TRUE, ncp = 5)  # PCA
+summary(ACP)
+
+# PCA Visualisation
+fviz_pca_var(ACP, col.var = "cos2", gradient.cols = c("blue", "yellow", "red"), repel = TRUE)
+
+# Variables pour le modèle PLS
+ds1 <- DS[,-c(1,2,4,5)]
+ACP2 <- PCA(ds1, scale.unit = TRUE, ncp = 5)
+X <- as.matrix(dv2)
+Y <- as.matrix(ds1)
+XY <- cbind(dv2, ds1)
+pls_model <- plsr(Y ~ X, data = XY, scale = TRUE, validation = "CV")
+
+# Données pour ASCA
+outcomes = as.matrix(scale(dV1[,-c(1,2,3,4,5)]))
+formula = "outcomes ~ Time + Lactate + Atm  + Atm:Lactate + Time:Lactate"
+design = dV1[,c(3,4,5)]
+design$Time <- as.factor(design$Time)
+
+UCH <- data2LmpDataList(
+  se = NULL, outcomes = outcomes,
+  design = design,
+  formula = formula
+)
+
+# PCA pour l'ASCA
+res.lim = pcaBySvd(UCH$outcomes, nPC = min(dim(UCH$outcomes)))
+
+ui <- fluidPage(
+  titlePanel("Dashboard PCA et ASCA"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("plot_type", "Choisir un graphique :", 
+                  choices = c("Cercle correlation Violatinol", "Cercle de correlation Sensorielle", "Aperçu des effets", "PCA sur les réponses", "PCA Loadings", 
+                              "PCA Scores (Lactate/Atm)", "PCA Scores (Lactate/Time)", 
+                              "ASCA Scores (Atm/Lactate)", "ASCA Scores (Lactate/Time)", "Contributions")),
+      sliderInput("nPC", "Nombre de composantes principales (nPC):", min = 1, max = 10, value = 5)
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Graphique", plotlyOutput("selected_plot")),
+        tabPanel("Résultats", verbatimTextOutput("results"))
+      )
+    )
+  )
+)
+
+```
+
+
+```{r, echo=FALSE}
+
+server <- function(input, output) {
+  
+  output$selected_plot <- renderPlotly({
+    if (input$plot_type == "Cercle correlation Violatinol") {
+      fviz_pca_var(ACP, col.var = "cos2", gradient.cols = c("blue", "yellow", "red"), repel = TRUE)
+    } else if (input$plot_type == "Cercle de correlation Sensorielle") {
+      fviz_pca_var(ACP2, col.var = "cos2", gradient.cols = c("blue", "yellow", "red"), repel = TRUE)
+    } else if (input$plot_type == "Aperçu des effets") {
+  plotDesign(
+  design = UCH$design, x = "Atm",
+  y = "Lactate", rows = "Time",
+  title = "Design of the UCH dataset"
+)
+    } else if (input$plot_type == "PCA sur les réponses") {
+      res.lim = pcaBySvd(UCH$outcomes, nPC = min(dim(UCH$outcomes)))
+      pcaScreePlot(res.lim)
+    } else if (input$plot_type == "PCA Loadings") {
+      pcaLoading2dPlot(res.lim, axes = c(1, 2), title = "PCA loadings", addRownames = TRUE)
+    } else if (input$plot_type == "PCA Scores (Lactate/Atm)") {
+      
+ResPCA <- pcaBySvd(UCH$outcomes)
+      pcaScorePlot(
+        resPcaBySvd = ResPCA, axes = c(1, 2),
+        title = "PCA scores plot: PC1 and PC2",
+        design = UCH$design,
+        color = "Lactate", shape = "Atm",
+        points_labs_rn = FALSE
+      )
+    } else if (input$plot_type == "PCA Scores (Lactate/Time)") {
+      ResPCA <- pcaBySvd(UCH$outcomes)
+      pcaScorePlot(
+        resPcaBySvd = ResPCA, axes = c(1, 2),
+        title = "PCA scores plot: PC1 and PC2",
+        design = UCH$design,
+        color = "Lactate", shape = "Time",
+        points_labs_rn = FALSE
+      )
+    } else if (input$plot_type == "ASCA Scores (Atm/Lactate)") {
+      # Génération du modèle
+resMM <- lmpModelMatrix(UCH)
+
+# Estimation des effets et décomposition des matrices
+resEM <- lmpEffectMatrices(resMM)
+      resASCA <- lmpPcaEffects(resLmpEffectMatrices = resEM, method = "ASCA")
+      lmpScorePlot(resASCA,
+                   effectNames = "Atm",
+                   color = "Atm", shape = "Lactate"
+      )
+    } else if (input$plot_type == "ASCA Scores (Lactate/Time)") {
+      resMM <- lmpModelMatrix(UCH)
+
+# Estimation des effets et décomposition des matrices
+resEM <- lmpEffectMatrices(resMM)
+      resASCA <- lmpPcaEffects(resLmpEffectMatrices = resEM, method = "ASCA")
+      lmpScorePlot(resASCA,
+                   effectNames = "Lactate",
+                   color = "Lactate", shape = "Time"
+      )
+    } else if (input$plot_type == "Contributions") {
+       resMM <- lmpModelMatrix(UCH)
+      resEM <- lmpEffectMatrices(resMM)
+       resASCA <- lmpPcaEffects(resLmpEffectMatrices = resEM, method = "ASCA")
+      resLmpContributions <- lmpContributions(resASCA)
+      resLmpContributions$plotTotal
+    }
+  })
+  
+  output$results <- renderPrint({
+    if (input$plot_type == "Contributions") {
+      pander::pander(resLmpContributions$totalContribTable)
+      pander::pander(resLmpContributions$effectTable)
+      pander::pander(resLmpContributions$combinedEffectTable)
+      pander::pander("Ordered contributions per effect:")
+    }
+  })
+}
+shinyApp(ui, server)
+```
+
+
+#Commentaires
+
+Les valeurs attribuées aux interactions entre ces variables qualitatives sont clairement visibles. Deux axes factoriels semblent suffisants pour mener une étude approfondie des effets de ces variables, car ils expliquent environ 67% de l'inertie totale. Il est notable que la majorité des variables sont bien projetées sur le plan factoriel, formant ainsi deux groupes distincts. Le premier groupe, colinéaire au premier axe factoriel, comprend les variables V015, VO19, etc., tandis que le deuxième groupe regroupe VO8, VO18, etc.
+Un autre constat important est le mélange des niveaux des variables d'effets sur le plan factoriel, avec peu d'interactions significatives identifiées. Enfin, le dernier graphique montre un taux élevé du ratio de la variance résiduelle, atteignant 59%, ce qui suggère que la variabilité non expliquée reste importante.
+
+
+#Conclusion
+En se basant sur les résultats obtenus et sur les tests de significativité, nous concluons que les variables Lot, Lactate, Atm et le Temps n'ont pas d'effet significatif sur la mesure des variables réponses
+

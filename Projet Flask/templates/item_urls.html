@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ item_name }} - Pythonpédia</title>
+    <style>
+        body { font-family: Arial; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .breadcrumb { margin-bottom: 20px; color: #7f8c8d; }
+        .breadcrumb a { color: #3498db; text-decoration: none; }
+        .url-list { list-style: none; padding: 0; }
+        .url-item { 
+            background: white; 
+            margin: 10px 0; 
+            padding: 15px; 
+            border-radius: 5px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .url-link { 
+            color: #2c3e50; 
+            text-decoration: none; 
+            font-weight: 500;
+        }
+        .url-link:hover { color: #e74c3c; }
+        .url-domain { color: #7f8c8d; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="breadcrumb">
+        <a href="{{ url_for('home') }}">Accueil</a> → 
+        <a href="{{ url_for('topics_list') }}">Topics</a> → 
+        <a href="{{ url_for('topic_items', topic_name=topic_name) }}">{{ topic_name }}</a> → 
+        <span>{{ item_name }}</span>
+    </div>
+
+    <h1>📂 {{ item_name }}</h1>
+    <p>Dans le topic: <strong>{{ topic_name }}</strong></p>
+
+    <ul class="url-list">
+        {% for url in urls %}
+        <li class="url-item">
+            <a href="{{ url }}" target="_blank" class="url-link">
+                🌐 {{ url }}
+            </a>
+            <div class="url-domain">
+                {{ url.split('//')[1].split('/')[0] }}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

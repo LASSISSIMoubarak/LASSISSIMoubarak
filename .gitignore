@@ -1,0 +1,46 @@
+# OS
+Thumbs.db
+.DS_Store
+
+# Windows thumbnail cache
+ehthumbs.db
+
+# R / RStudio
+.Rhistory
+.RData
+.Rproj.user/
+
+# Python
+__pycache__/
+*.py[cod]
+ven/
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDEs
+.vscode/
+.idea/
+
+# Build / distributions
+build/
+dist/
+*.egg-info/
+
+# Logs and temporary files
+*.log
+*.aux
+*.out
+*.toc
+
+# Documents / exports to avoid deploying
+*.pdf
+*.docx
+*.pptx
+
+# Misc
+.DS_Store
+Thumbs.db

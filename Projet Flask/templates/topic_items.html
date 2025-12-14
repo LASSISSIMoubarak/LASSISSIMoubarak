@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ topic_name }} - Pythonpédia</title>
+    <style>
+        body { font-family: Arial; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .breadcrumb { margin-bottom: 20px; color: #7f8c8d; }
+        .breadcrumb a { color: #3498db; text-decoration: none; }
+        .item-grid { display: grid; gap: 15px; }
+        .item-card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-left: 4px solid #3498db;
+        }
+        .item-title { 
+            font-size: 1.2em; 
+            color: #2c3e50; 
+            margin-bottom: 10px;
+            text-decoration: none;
+        }
+        .item-urls { color: #7f8c8d; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="breadcrumb">
+        <a href="{{ url_for('home') }}">Accueil</a> → 
+        <a href="{{ url_for('topics_list') }}">Topics</a> → 
+        <span>{{ topic_name }}</span>
+    </div>
+
+    <h1>
+        {% if topic_name == "GraphicOptimization" %} 📊 
+        {% elif topic_name == "TorchOptimization" %} 🧠
+        {% elif topic_name == "SparkFlaskIntegration" %} ⚡
+        {% elif topic_name == "Machinelearning_model" %} 🤖
+        {% else %} 📁 {% endif %}
+        {{ topic_name }}
+    </h1>
+    <p>Sélectionnez une catégorie pour voir les ressources</p>
+
+    <div class="item-grid">
+        {% for item_name, urls in items.items() %}
+        <a href="{{ url_for('item_urls', topic_name=topic_name, item_name=item_name) }}" style="text-decoration: none;">
+            <div class="item-card">
+                <div class="item-title">📂 {{ item_name }}</div>
+                <div class="item-urls">
+                    {% if urls is string %}
+                        1 ressource
+                    {% else %}
+                        {{ urls|length }} ressources
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</body>
+</html>

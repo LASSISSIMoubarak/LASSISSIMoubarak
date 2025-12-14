@@ -1,46 +1,44 @@
-# 👋 Hi there, I'm Moubarak LASSISSI  
 
-🎓 Data science & machine learning enthusiast with a background in statistics and applied mathematics.  
-📊 Passionate about data-driven decision making, predictive modeling, and building ML solutions.  
+# Projet: LASSISSI Moubarak
 
----
+Ce dépôt rassemble plusieurs travaux et projets (Python, R, notebooks, prototypes MLOps) réalisés par LASSISSI Moubarak Ingénieur Statistcien & Data Scientist. Ce README donne une vue d'ensemble, des instructions pour lancer les éléments principaux et des repères pour retrouver les parties importantes du dépôt.
 
-## 🚀 Projects  
+**Structure du dépôt**
+- **`Big data/`** : scripts Python divers pour travaux Big Data et exercices. avec flask pour une création de site web puis l'utilisation de mapreducer puis spark
 
-### 🔹 [Traffic Prediction using Functional Data](https://github.com/LASSISSIMoubarak/LASSISSIMoubarak/blob/main/datachalenge.py)  
-- **File:** `datachallenge.py`  
-- **Description:** Prediction of transport card validations (traffic flow) using **functional data analysis**.  
-- **Key techniques:** Basis transformations (B-splines, Fourier), regression & machine learning models.  
+- **`Data challenge/`** : notebooks et scripts liés à un challenge de prédictions du traffic ferrovier sncf
 
----
+- **`mlops/`** : projet MLOps, dont `mlops_breast_cancer/` contenant un petit projet Python avec `requirements.txt` et `pyproject.toml`. strutucturer un projet avec un modèle de regression logistique.
 
-### 🔹 [Kernel Approximation for Faster Machine Learning](https://github.com/LASSISSIMoubarak/LASSISSIMoubarak/blob/main/Kernel_approximation.ipynb)  
-- **File:** `kernel_approximation.ipynb`  
-- **Description:** Implementation of **Fourier feature approximation** to reduce computation time of kernel methods.  
-- **Key techniques:** Random Fourier Features, dimensionality reduction, scalability in ML.  
+- **`R_project/`** : projets R; contient `CATPCA/` avec une application Shiny (`app.R`).
+- **`Modelisation Bayésienne/`**, **`Etude de cas 2/`**, **`Mini Projet/`**, **`Statistiqiues en grande dimension/`** : scripts et analyses R.
+- **`Projet Flask/`** : petite app Flask et templates HTML.
+- Notebooks racine : `Kernel_approximation.ipynb`, `TP_CNN.ipynb`.
 
----
+**Points d'entrée / éléments à lancer**
+- `mlops/mlops_breast_cancer/requirements.txt` : dépendances Python du prototype MLOps.
+- `R_project/CATPCA/app.R` : application Shiny CATPCA (R) — lancer depuis RStudio ou `shiny::runApp()`.
+- Notebooks Jupyter : ouvrir avec JupyterLab/Jupyter Notebook.
 
-### 🔹 [Convolutional Neural Network (CNN) for Image Classification](https://github.com/LASSISSIMoubarak/LASSISSIMoubarak/blob/main/TP_CNN.ipynb)  
-- **File:** `TP_CNN.ipynb`  
-- **Description:**  **CNN architecture** for multiclass image classification.  
-- **Key techniques:** Deep learning, convolution layers, classification metrics.  
----
+**Installer l'environnement Python (exemple Windows PowerShell)**
 
-### 🔹 [ANOVA MULTIVARIATE](https://github.com/LASSISSIMoubarak/LASSISSIMoubarak/blob/main/ANOVA%20MULT%20SENSO%20ET%20VOLA.R)  
-- **File:** `ANOVA_MULT_SENSO_ET_VOLA.R`  
-- **Description:** Application of advanced statistical methods to multivariate biological data.  
-- **Key techniques:** MANOVA, ASCA (ANOVA-Simultaneous Component Analysis), multi-block analysis, permutation tests, PCA.  
+```powershell
+# Créer et activer un venv (depuis la racine du dépôt)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 
----
+# Installer dépendances pour le projet mlops si besoin
+pip install -r .\mlops\mlops_breast_cancer\requirements.txt
+```
 
+**Lancer l'application Shiny (R)**
 
-## 🛠️ Skills & Tools  
-- **Programming:** Python (NumPy, Pandas, Scikit-learn, TensorFlow, PyTorch, Matplotlib, Seaborn) & R  
-- **Data Science:** Machine Learning, Functional Data Analysis, Clustering, Regression, Neural Networks  
-- **Other:** Git, Jupyter Notebook, LaTeX  
+Ouvrir `R_project/CATPCA/app.R` dans RStudio puis cliquer sur "Run App", ou dans une session R :
 
----
+```r
+setwd("R_project/CATPCA")
+shiny::runApp()
+```
 
-## 📫 Connect with me  
-- 📧 Email: lassissimoubarak20@gmail.com  
+Packages R nécessaires (extraits de `app.R`) : `shiny`, `shinythemes`, `Gifi`, `ggplot2`, `dplyr`, `foreign`, `plotly`, `DT`, `corrplot`.
+

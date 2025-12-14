@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Annuaire des serveurs</title></head>
+<body>
+<h1>🌐 Annuaire Pythonpédia</h1>
+<p>Serveurs connectés :</p>
+<ul>
+{% for srv in serveurs %}
+    <li>
+        <a href="{{ url_for('voir_contenu_serveur', server_url=srv|replace('/', '|')) }}">
+            {{ srv }}
+        </a>
+    </li>
+{% endfor %}
+</ul>
+<a href="{{ url_for('home') }}">Retour accueil</a>
+</body>
+</html>
