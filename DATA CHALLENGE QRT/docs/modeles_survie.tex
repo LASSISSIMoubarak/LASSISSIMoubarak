@@ -1,0 +1,431 @@
+\documentclass[12pt,a4paper]{article}
+
+% ============================
+% ENCODAGE & FONTS
+% ============================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{rotating}
+\usepackage[hidelinks]{hyperref}
+\usepackage[colorlinks=true, linkcolor=black]{hyperref}
+% ============================
+% MISE EN PAGE
+% ============================
+% \usepackage[top=3cm, bottom=3cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+% ============================
+% GRAPHISMES
+% ============================
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{wrapfig}
+\usepackage{caption}
+
+% ============================
+% TABLEAUX
+% ============================
+\usepackage{booktabs}
+\usepackage{array, multirow, makecell}
+\usepackage[table]{xcolor}
+
+% ============================
+% MATHS
+% ============================
+\usepackage{amsmath, amssymb, amsfonts, mathtools, bbm}
+
+% ============================
+% CODE & BOITES
+% ============================
+\usepackage{tcolorbox}
+\tcbuselibrary{listings}
+\usepackage{listings}
+
+% ============================
+% EN-TÊTES & PIEDS DE PAGE
+% ============================
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+
+\renewcommand{\headrulewidth}{0.3pt}
+\fancyhead[L]{}
+\fancyhead[C]{}
+\fancyhead[R]{Data Challenge}
+
+\renewcommand{\footrulewidth}{0.3pt}
+\fancyfoot[L]{M2 DS}
+\fancyfoot[C]{\thepage}
+\fancyfoot[R]{}
+\usepackage{enumitem} 
+% ============================
+% LIENS
+% ============================
+\usepackage{hyperref}
+% \hypersetup{
+%     colorlinks=true,
+%     linkcolor=blue,
+%     urlcolor=blue,
+%     citecolor=blue
+% }
+
+% ============================
+% TITRE
+% ============================
+\title{Projet Data Challenge \\ \large Modélisation}
+\author{Moubarak LASSISSI}
+\date{\today}
+
+% ============================
+% DOCUMENT
+% ============================
+\begin{document}
+
+\begin{titlepage}
+    \centering
+
+    \includegraphics[width=0.45\linewidth]{Université_d'Angers_(logo).svg.png}
+
+    \vspace{1.5cm}
+
+    {\Large \textsc{Projet Data Challenge QRT  M2 Data Science}}\\
+    
+    \vspace{8mm} % Correction ici : \\[8mm] au lieu de \[8mm]
+
+    {\huge \bfseries Prédiction du risque de décès chez les patients atteints d’un cancer du sang}\\
+    
+    \vspace{6mm} % Correction ici aussi
+
+    \vspace{1cm}
+    \rule{\linewidth}{0.5mm}
+
+    \vspace{1.5cm}
+
+    {\Large Moubarak LASSISSI}
+
+    \vspace{1.5cm}
+
+    {\Large \textsc{Encadrant} : M. Fabien Panloup}
+
+    \vfill
+    {\large \today}
+\end{titlepage}
+
+% ============================
+% CORPS DU DOCUMENT
+% ============================
+\tableofcontents
+
+\newpage
+
+
+\title{Documentation Technique}
+\date{\today}
+\begin{abstract}
+Ce rapport expose les principes mathématiques et algorithmiques des trois modèles de survie mobilisés dans le cadre du Data Challenge QRT pour prédire le risque de mortalité chez des patients atteints de leucémie myéloïde. Les méthodes analysées sont le modèle de Cox à risques proportionnels (CoxPH), la Random Survival Forest (RSF) et le Gradient Boosting appliqué à l’analyse de survie (GBSurvival). Pour chacun de ces modèles, les hypothèses sous‑jacentes, la formulation théorique ainsi que les résultats obtenus sont présentés à la fin du rapport.
+\end{abstract}
+
+`\newpage
+\section{Introduction}
+La \textbf{leucémie myéloïde} est un cancer hématologique sévère, caractérisé par une prolifération incontrôlée de cellules myéloïdes immatures au sein de la moelle osseuse. Cette expansion pathologique perturbe profondément l’hématopoïèse et compromet la production normale des cellules sanguines. Dans ce contexte, l’identification de \textbf{facteurs pronostiques robustes} constitue un enjeu majeur pour optimiser la prise en charge clinique. Une telle analyse permet notamment :
+\begin{itemize}
+    \item d’adapter les stratégies thérapeutiques au profil de risque individuel ;
+    \item d’anticiper l’évolution de la maladie et la probabilité de rechute ;
+    \item d’améliorer la décision médicale et l’allocation des ressources.
+\end{itemize}
+
+L’essor récent de la \textbf{science des données} et des méthodes d’apprentissage automatique a profondément transformé l’analyse des données de santé, en particulier en oncologie. En intégrant des informations cliniques, biologiques et moléculaires souvent complexes, ces approches permettent de construire des \textbf{modèles prédictifs performants}, capables d’estimer le pronostic même en présence de données censurées, situation courante en analyse de survie.
+
+C’est dans cette dynamique que s’inscrit le \textbf{Data Challenge QRT}, consacré à la prédiction de la \textbf{survie globale} de patients atteints de leucémie myéloïde. À partir de données réelles issues de plusieurs centres, ce challenge vise à développer des modèles capables de classer les patients selon leur risque de décès, contribuant ainsi à une meilleure compréhension des déterminants de la survie et à une mise en pratique concrète des méthodes statistiques et de machine learning en milieu médical.
+
+Ce rapport présente d’abord le contexte et les données utilisées, puis propose une analyse exploratoire univariée des principales variables disponibles. Il détaille ensuite plusieurs modèles de prédiction de survie couramment employés en pratique clinique, notamment le \textbf{modèle de Cox}, la \textbf{Random Survival Forest} et le \textbf{Gradient Boosting Survival Analysis}, particulièrement adaptés aux problématiques de censure.
+
+\newpage
+\subsection{Objectif}
+
+L’objectif est de développer un modèle prédictif capable d’estimer le \textbf{risque de décès} de chaque patient à partir des données cliniques et moléculaires. Pour cela, des méthodes d’\textbf{analyse de survie} sont mobilisées, discipline statistique qui étudie le temps écoulé avant la survenue d’un événement d’intérêt (ici, le décès), en tenant compte de la censure.
+
+Dans l’évaluation des modèles, ce qui importe n’est pas seulement la prédiction du temps exact de survie, mais la \textbf{cohérence du classement des patients par niveau de risque}, mesurée par le IPCW C-index).
+
+\newpage
+
+\section{Analyse exploratoire des données}
+\noindent(\textbf{cf. notebook}~\texttt{01\_Analyse\_Exploratoire.ipynb})
+
+Deux grandes catégories de données complémentaires sont disponibles pour chaque patient : les données cliniques et les données moléculaires.
+
+\subsection{Données cliniques}
+Les données cliniques regroupent les caractéristiques démographiques et médicales de base :
+\begin{table}[H]
+\centering
+\footnotesize
+\begin{tabular}{>{\bfseries}l p{0.4\linewidth} >{\bfseries}l p{0.4\linewidth}}
+\toprule
+\textbf{Variable} & \textbf{Description} & \textbf{Variable} & \textbf{Description} \\
+\midrule
+ID & Identifiant unique patient & ANC & Neutrophiles absolus (G/L) \\
+CENTER & Centre clinique & MONOCYTES & Monocytes (G/L) \\
+BM\_BLAST & \% blastes moelle osseuse & HB & Hémoglobine (g/dL) \\
+WBC & Globules blancs (G/L) & PLT & Plaquettes (G/L) \\
+CYTOGENETICS & Caryotype (notation ISCN) & & \\
+\bottomrule
+\end{tabular}
+\caption{Variables cliniques disponibles}
+\label{tab:variables_cliniques_compact}
+\end{table}
+\subsection{Données moléculaires}
+
+Les données moléculaires décrivent les altérations génomiques somatiques. Elles permettent une \textbf{stratification fine du risque} et l'identification de cibles thérapeutiques potentielles.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\begin{tabular}{>{\bfseries}l p{0.43\linewidth} >{\bfseries}l p{0.43\linewidth}}
+\toprule
+\textbf{Variable} & \textbf{Description} & \textbf{Variable} & \textbf{Description} \\
+\midrule
+ID & Identifiant unique patient & GENE & Gène affecté\\
+CHR & Chromosome & PROTEIN\_CHANGE & Changement protéique \\
+START & Position de départ & EFFECT & Impact de mutation \\
+END & Position de fin & VAF & Fraction allélique variante \\
+REF & Nucléotide référence  \\
+ALT & Nucléotide alternatif & & \\
+\bottomrule
+\end{tabular}
+\caption{Variables moléculaires disponible}
+\end{table}
+
+\subsection{Disposition des données}
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{lcc}
+        \hline
+        \textbf{Dataset} & \textbf{Nombre d'individus / mutations} & \textbf{Nombre de variables} \\
+        \hline
+        Clinical Train   & 3323 patients   & 9  \\
+        Molecular Train  & 10935 mutations & 11 \\
+        Y Train          & 3323 patients   & 3  \\
+        \hline
+        Clinical Test    & 1193 patients   & 9  \\
+        Molecular Test   & 3089 mutations  & 11 \\
+        \hline
+    \end{tabular}
+    \caption{Statistiques globales des jeux de données}
+\end{table}
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{l l}
+        \hline
+        \textbf{Variable cible} & \textbf{Description} \\
+        \hline
+        OS\_YEARS  & Temps de survie (en années) \\
+        OS\_STATUS & 1 = décédé, 0 = censuré \\
+        \hline
+    \end{tabular}
+    \caption{Description des variables cibles}
+\end{table}`
+\newpage
+
+\vspace{2cm}
+
+`
+\section{Ingénierie des features}
+\noindent(\textbf{cf. notebook}~\texttt{02\_Feature\_Engineering.ipynb})
+
+Pour la modélisation du risque de survie, il est utilisé un ensemble de variables cliniques et moléculaires construites à partir des jeux de données brutes du challenge. Au total 55 features sont utilisées réparties de la manière suivante:
+
+Du côté clinique, six variables quantitatives principales sont retenues (\texttt{BM\_BLAST}, \texttt{WBC}, \texttt{ANC}, \texttt{MONOCYTES}, \texttt{HB} et \texttt{PLT}). Elles sont complétées par des indicateurs de qualité de données, des ratios biologiques et un codage détaillé du caryotype \texttt{CYTOGENETICS}.
+\begin{itemize}[label=\large$\bullet$]
+    \item \textbf{Features cliniques} :
+    \begin{itemize}[label=\small$\circ$]
+        \item \textbf{Variables biologiques de base} : \texttt{BM\_BLAST}, \texttt{WBC}, \texttt{ANC}, \texttt{MONOCYTES}, \texttt{HB}, \texttt{PLT} ;
+        \item \textbf{Variables de complétude} : \texttt{N\_MISSING} (nombre total de valeurs manquantes parmi ces mesures) et indicateurs binaires \texttt{*\_MISSING} pour chaque variable clinique ;
+        \item \textbf{Profil cytogénétique} : la variable \texttt{CYTOGENETICS} est regroupée en catégories de risque puis codée en variables indicatrices \texttt{CYTO\_*} (one-hot encoding) ;
+        \item \textbf{Ratios biologiques} : rapports entre variables hématologiques \texttt{RATIO\_WBC\_PLT}, \texttt{RATIO\_ANC\_WBC} et \texttt{RATIO\_MONO\_WBC}, afin de capturer des relations non linéaires entre compte cellulaire et plaquettes.
+    \end{itemize}
+
+    \item \textbf{Features moléculaires} :
+    \begin{itemize}[label=\small$\circ$]
+        \item \textbf{Charge mutationnelle globale} : nombre total de mutations par patient (\texttt{N\_MUTATIONS}) et nombre de gènes distincts mutés (\texttt{N\_GENES\_MUTES}) ;
+        \item \textbf{Profil VAF agrégé} : statistiques résumées de la fraction allélique variante sur l’ensemble des mutations d’un patient (\texttt{VAF\_MEAN}, \texttt{VAF\_MAX}, \texttt{VAF\_STD}) ;
+        \item \textbf{Spectre fonctionnel des mutations} : nombre de mutations par type d’effet fonctionnel, via des variables \texttt{EFFECT\_*} ;
+        \item \textbf{Profil de gènes pronostiques} : variables binaires \texttt{HAS\_<GENE>} indiquant la présence d’au moins une mutation dans un ensemble restreint de gènes jugés importants, sélectionnés automatiquement en fonction de leur fréquence et de leur impact observé sur la survie.
+    \end{itemize}
+\end{itemize}
+\paragraph{
+Afin de ramener l’ensemble des variables sur une même échelle, une étape de standardisation des données est nécessaire. Plus précisément, trois méthodes de normalisation ont été comparées —Min-Max Scaling, Standard Scaling et Robust Scaling — afin d’identifier celle qui préservait le mieux la forme des distributions tout en limitant l’influence des valeurs extrêmes.La standardisation classique (Standard Scaling) s’est révélée la plus adaptée et a donc été retenue pour la suite de la modélisation.}
+
+
+
+\section{Modélisation}
+\noindent(\textbf{cf. notebook}~\texttt{03\_Modelisation.ipynb})
+\subsection{Problématique}
+
+Les analyses exploratoires menées dans les notebooks \texttt{01\_Analyse\_exploratoire.ipynb} et \texttt{02\_Feature\_Engineering.ipynb} mettent en évidence plusieurs difficultés structurelles dans les données :
+\begin{itemize}
+    \item les distributions des variables présentent une forte \textbf{hétérogénéité} ainsi que des asymétries marquées ;
+    \item l’Analyse en Composantes Principales (ACP) offre une représentation linéaire peu satisfaisante, révélant une \textbf{structure intrinsèquement non linéaire} des données, ce qui limite la pertinence d’un modèle de régression linéaire classique pour prédire le temps de survie.
+\end{itemize}
+
+
+De plus, il est rarement pertinent d’implémenter des modèles très sophistiqués moins interprétables, car la \textbf{transparence du modèle} et la possibilité de relier les variables aux décisions cliniques restent essentielles.
+
+
+\subsection{Gestion des données manquantes}
+
+La gestion des données manquantes est une étape cruciale dans le processus de modélisation. En milieu médical, ignorer ces valeurs manquantes ou supprimer systématiquement les lignes incomplètes peut introduire des \textbf{biais importants}.
+
+Dans ce travail, l’approche proposée dans le notebook de référence du challenge (benchmark) a été suivie, en utilisant une \textbf{imputation par la médiane} pour les variables quantitatives. Cette stratégie simple permet de conserver un nombre suffisant d’observations tout en limitant l’influence des valeurs extrêmes.
+
+\subsection{Présentation des modèles}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Modèle} & \textbf{Type} \\
+\midrule
+Régression linéaire pénalisée (Ridge, Lasso) & Régression sur score de survie \\
+Elastic-net & Régression sur score de survie \\
+LightgradientBoosting & Régression sur score de survie \\
+Gradient Boosting classique               & Boosting de régression \\
+Forêt de survie aléatoire (RSF)              & Modèle  non paramétrique \\
+Gradient Boosting Survival Analysis          & Boosting adapté à la survie censurée \\Modèle de Cox à risques proportionnels  
+         & Modèle de survie semi-paramétrique  \\
+\bottomrule
+\end{tabular}
+\caption{Modèles testés dans le notebook de modélisation.}
+\end{table}
+Les trois derniers appartiennent à la famille des modèles de survie modernes, adaptés aux données censurées, et se rapprochent des modèles probabilistes vus en cours tout en les généralisant. 
+
+Dans ce travail, nous avons donc choisi de nous concentrer sur des \textbf{modèles de survie classiques et robustes}, capables de gérer la censure et des interactions complexes entre variables, tout en conservant une interprétabilité raisonnable.
+Par validation croisée, le risque moyen de chaque modèle testé est comparé puis le modèle ayant le plus haut score est noté.
+Les modèles retenus sont :
+\begin{itemize}[label=\large$\bullet$]
+    \item le modèle de Cox à risques proportionnels ;
+    \item la forêt de survie aléatoire (Random Survival Forest) ;
+    \item le Gradient Boosting Survival Analysis.
+\end{itemize}
+
+
+\subsection{Quelques rappels sur ces modèles}
+\begin{enumerate}
+  \item \textbf{Modèle de Cox à risques proportionnels (CoxPH)} :
+modèle semi-paramétrique classique d’analyse de survie qui décrit
+l’effet multiplicatif des covariables sur le risque instantané de
+survenue d'un événement d’intérêt.
+
+Plus précisément, le modèle suppose que, conditionnellement au vecteur
+
+de covariables $\mathbf{x}$, la fonction de risque s’écrit :
+\begin{equation}
+h(t \mid \mathbf{x}) = h_0(t)\,\exp\!\left(\boldsymbol{\beta}^\top \mathbf{x}\right)
+\label{eq:cox-risk2}
+\end{equation}
+où $h_0(t)$ est une fonction de risque de base non paramétrique commune à tous les individus, et $\boldsymbol{\beta}$ est un vecteur de paramètres inconnus mesurant l’effet des covariables sur le risque relatif.
+
+Les coefficients $\boldsymbol{\beta}$ sont estimés par maximisation de la
+
+vraisemblance partielle de Cox :
+\begin{equation}
+L(\boldsymbol{\beta}) = \prod_{i:\,\delta_i = 1} \frac{\exp(\boldsymbol{\beta}^\top \mathbf{x}_i)}{\sum_{j \in \mathcal{R}(t_i)} \exp(\boldsymbol{\beta}^\top \mathbf{x}_j)}
+\label{eq:cox-likelihood2}
+\end{equation}
+où $\mathcal{R}(t_i)$ désigne l’ensemble des individus encore à risque au temps $t_i$. Cette approche permet d’estimer les effets des covariables sans spécifier la forme du risque de base $h_0(t)$, sous les hypothèses de censure non informative et de risques proportionnels.
+\item \textbf{Forêt de Survie Aléatoire (Random Survival Forest)}:
+c'est une méthode d’apprentissage non paramétrique dédiée à l’analyse de données de survie censurées. Elle étend le principe des forêts aléatoires classiques au cadre du temps jusqu’à un événement d’intérêt.
+
+Une construction de $B$ arbres de survie est réalisée. Chaque arbre est appris à partir d’un échantillon bootstrap des données d’apprentissage, et à chaque nœud, une séparation est choisie en maximisant un critère basé sur la statistique du test du log-rank.
+\paragraph{Statistique du log-rank.}
+Considérons une coupure candidate partitionnant les observations d’un nœud en deux sous-groupes $\mathcal{N}_L$ et $\mathcal{N}_R$. Soient $t_1 < \dots < t_K$ les temps distincts d’événements observés, $d(t_k)$ le nombre total d’événements au temps $t_k$, $d_L(t_k)$ le nombre d’événements observés dans le groupe gauche, et $n(t_k)$ et $n_L(t_k)$ les effectifs à risque correspondants.
+
+Sous l’hypothèse nulle d’égalité des fonctions de survie dans les deux groupes, le nombre d’événements attendus dans le groupe gauche au temps $t_k$ est donné par
+\begin{equation}
+E_L(t_k) = d(t_k)\,\frac{n_L(t_k)}{n(t_k)}
+\end{equation}
+La statistique du test du log-rank est définie par
+\begin{equation}
+Z = \frac{\sum_{k=1}^K \bigl[d_L(t_k) - E_L(t_k)\bigr]}{\sqrt{\sum_{k=1}^K \frac{n_L(t_k)}{n(t_k)} \left(1 - \frac{n_L(t_k)}{n(t_k)}\right) \frac{n(t_k)-d(t_k)}{n(t_k)-1} \, d(t_k)}}
+\end{equation}
+La coupure maximise $Z^2$ (voir \cite{scikit-rsf}).
+\paragraph{Estimation dans les feuilles terminales.}
+Une fois la structure de l’arbre construite, chaque feuille terminale fournit une estimation de la fonction de risque cumulé à partir des observations qu’elle contient. Cette estimation est réalisée à l’aide de l’estimateur de Nelson--Aalen, défini par
+\begin{equation}
+\hat H_h(t) = \sum_{t_k \le t} \frac{d_h(t_k)}{n_h(t_k)}
+\end{equation}
+où $d_h(t_k)$ désigne le nombre d’événements observés dans la feuille $h$ au temps $t_k$ et $n_h(t_k)$ le nombre d’individus à risque juste avant $t_k$. La fonction de survie associée est alors
+\begin{equation}
+\hat S_h(t) = \exp\bigl(-\hat H_h(t)\bigr)
+\end{equation}
+
+\paragraph{Agrégation des arbres.}
+Pour un individu de covariables $\mathbf{x}$, chaque arbre fournit une estimation de la fonction de risque cumulé correspondant à la feuille dans laquelle l’individu est projeté. La forêt agrège ces estimations par moyenne sur l’ensemble des arbres :
+\begin{equation}
+\hat H(t \mid \mathbf{x}) = \frac{1}{B} \sum_{b=1}^{B} \hat H_{h_b(\mathbf{x})}(t)
+\end{equation}
+où $h_b(\mathbf{x})$ désigne la feuille de l’arbre $b$ contenant l’individu $\mathbf{x}$.
+  \item \textbf{Gradient Boosting Survival} :
+ce modèle reprend le principe du gradient boosting classique, mais adapté au cadre de la survie. La différence principale réside dans la fonction de perte : il est minimisé ici la \emph{log-vraisemblance partielle négative} du modèle de Cox. Pour un prédicteur linéaire $\boldsymbol{\beta}^\top \mathbf{x}$, cette perte s’écrit
+\begin{equation}
+\mathcal{L}(\boldsymbol{\beta}) = -\sum_{i:\,\delta_i = 1} \left( \boldsymbol{\beta}^\top \mathbf{x}_i - \log\!\left[ \sum_{j \in \mathcal{R}(t_i)} \exp(\boldsymbol{\beta}^\top \mathbf{x}_j) \right] \right)
+\end{equation}
+où $\delta_i$ indique l’occurrence de l’événement et $\mathcal{R}(t_i)$ désigne l’ensemble des individus encore à risque au temps $t_i$ (voir \cite{scikit-gbsurv}).
+\end{enumerate}
+\subsection{Tableau comparatif des modèles}
+Les résultats chiffrés finaux (C-index sur train, validation et test) sont synthétisés dans le tableau suivant. Les valeurs de C-index IPCW sur le site du Data Challenge sont indiquées.
+
+Les hyperparamètres optimaux de chaque modèle, obtenus par validation croisée sur le jeu d'entraînement, sont présentés dans le tableau ci-dessous. 
+La combinaison des trois modèles a été effectuée en calculant une moyenne pondérée des scores de risque prédits, la pondération étant déterminée par le rang de risque attribué à chaque patient selon les trois modèles (voir \texttt{Notebook\_03\_modelisation.ipynb}).
+\begin{table}[h]
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Modèle} & \textbf{n\_estimators} & \textbf{max\_depth} & \textbf{min\_samples\_split} & \textbf{min\_samples\_leaf} & \textbf{max\_features / $\alpha$} & \textbf{Autres paramètres} \\
+\midrule
+RSF & 500 & 10 & 10 & 5 & 0.3 & C-index CV: 0.7323 \\
+GBSurvival & 200 & 5 & -- & -- & -- & learning\_rate: 0.05 \\
+CoxPH & -- & -- & -- & -- & $\alpha = 0.5$ & -- \\
+\bottomrule
+\end{tabular}
+}
+\caption{Hyperparamètres optimaux retenus pour chaque modèle après validation croisée.}
+\end{table}
+
+
+
+
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Modèle} & \textbf{C-index Train} & \textbf{C-index Validation} & \textbf{C-index IPCW Test} \\
+\midrule
+CoxPH               & \textit{À compléter} & \textit{À compléter} & \textit{À compléter} \\
+RSF                 & \textit{À compléter} & \textit{À compléter} & \textit{0.739}      \\
+GBSurvival          & \textit{À compléter} & \textit{À compléter} & \textit{À compléter} \\
+Combinaison des trois & \textit{À compléter} & \textit{À compléter} & \textit{0.740}      \\
+\bottomrule
+\end{tabular}
+\caption{Comparaison des performances des trois modèles et de leur combinaison.}
+\end{table}
+
+\newpage
+
+\section*{Références}
+
+\begin{thebibliography}{9}
+\bibitem{scikit-rsf}
+Documentation \texttt{RandomSurvivalForest} de \texttt{scikit-survival} :\url{https://scikit-survival.readthedocs.io/en/stable/api/generated/sksurv.ensemble.RandomSurvivalForest.html}
+
+\bibitem{scikit-gbsurv}
+Documentation sur le Gradient Boosting pour la survie :\url{https://scikit-survival.readthedocs.io/en/stable/user_guide/boosting.html}
+
+\bibitem{scikit-coxph}
+Documentation \texttt{CoxPHSurvivalAnalysis} de \texttt{scikit-survival} :\url{https://scikit-survival.readthedocs.io/en/stable/api/generated/sksurv.linear_model.CoxPHSurvivalAnalysis.html}
+\end{thebibliography}
+
+\end{document}

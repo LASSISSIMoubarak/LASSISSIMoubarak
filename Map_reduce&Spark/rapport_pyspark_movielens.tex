@@ -1,0 +1,489 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{Rapport sur le projet PySpark avec le jeu de données MovieLens}
+\author{Moubarak LASSISSI}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+
+L'objectif de ce projet est de découvrir et de pratiquer PySpark,
+l'API Python d'Apache Spark, à travers l'analyse du jeu de données
+\emph{MovieLens}. Il couvre plusieurs aspects essentiels
+du travail avec Spark~: exploration de données, agrégations,
+SQL distribué, jointures, traitement de chaînes (genres), apprentissage
+automatique  et notions de performance (partitions,
+cache, plans d'exécution).
+
+\section{Présentation de PySpark}
+Apache Spark est un moteur de calcul distribué pour le Big Data.
+Il permet de traiter de grands volumes de données en mémoire, sur
+un cluster, en fournissant un modèle de programmation simple et
+expressif tels que :
+\begin{itemize}
+  \item le calcul distribué sur plusieurs machines (ou cœurs),
+  \item la tolérance aux pannes grâce au modèle de résilience,
+  \item la possibilité de chaîner des opérations complexes
+        (filtres, agrégations, jointures, ML, SQL, etc.).
+\end{itemize}
+
+\subsection{PySpark et les base des données}
+PySpark est l'interface de Spark pour le langage Python, il est éssentiellenlement utilisé pour~:
+\begin{itemize}
+  \item manipuler des DataFrames distribués,
+  \item exécuter des requêtes SQL sur de grands ensembles de données,
+  \item appliquer des algorithmes d'apprentissage automatique
+        via MLlib.
+\end{itemize}
+
+\section{Application}
+\subsection{Jeu de données MovieLens}
+
+Le jeu de données \emph{MovieLens} contient des évaluations de films
+par des utilisateurs. Dans ce projet, nous avons utilisé la version
+\emph{ml-latest-small}, composée notamment de deux fichiers CSV~:
+\begin{itemize}
+  \item \texttt{ratings.csv}~: contient les colonnes
+        \texttt{userId}, \texttt{movieId}, \texttt{rating},
+        \texttt{timestamp}.
+  \item \texttt{movies.csv}~: contient les colonnes
+        \texttt{movieId}, \texttt{title}, \texttt{genres}.
+\end{itemize}
+
+Ces fichiers ont été lus avec \texttt{spark.read.csv} en demandant
+l'inférence de schéma et la présence d'un en-tête (option
+\texttt{header=True, inferSchema=True}).
+
+\section{Tâches 0 et 1~: mise en place et exploration}
+
+\subsection{Tâche 0~: création de la SparkSession}
+
+La première étape du notebook consiste à installer PySpark
+(pour Colab) puis à créer une \texttt{SparkSession}~:
+\begin{itemize}
+  \item définition d'un nom d'application
+        (\texttt{PySpark\_Student\_Exercises\_Movies}),
+  \item mode \texttt{local[*]} pour utiliser tous les cœurs
+        disponibles sur la machine locale.
+\end{itemize}
+
+Cette session permet ensuite de créer des DataFrames à partir
+des fichiers CSV et d'exécuter des requêtes SQL.
+
+\subsection{Tâche 1.1~: inspection des données}
+
+Sur les DataFrames \texttt{ratings} et \texttt{movies},
+les opérations suivantes ont été réalisées~:
+\begin{itemize}
+  \item affichage des 10 premières lignes avec \texttt{show(10)},
+  \item affichage des schémas avec \texttt{printSchema()},
+  \item comptage du nombre de lignes avec \texttt{count()}.
+\end{itemize}
+
+Ces réquêtes permettent de vérifier la structure des données, les types de
+colonnes et la taille du jeu de données.
+
+\subsection{Tâche 1.2~: sélection et transformation de colonnes}
+
+Pour \texttt{ratings}, un nouveau DataFrame \texttt{ratings\_selected}
+a été créé en~:
+\begin{itemize}
+  \item sélectionnant les colonnes \texttt{userId}, \texttt{movieId},
+        \texttt{rating},
+  \item renommant \texttt{movieId} en \texttt{film\_id},
+  \item castant explicitement \texttt{rating} en \texttt{float}.
+\end{itemize}
+
+Ces opérations utilisent des fonctions PySpark telles que
+\texttt{select}, \texttt{alias} et \texttt{cast}.
+
+\subsection{Tâche 1.3~: filtrage}
+
+Plusieurs exemples de filtrage ont été implémentés~:
+\begin{itemize}
+  \item toutes les évaluations de l'utilisateur \texttt{userId = 1},
+  \item toutes les évaluations strictement supérieures à 4{,}5,
+  \item toutes les évaluations dont \texttt{movieId} est dans l'ensemble
+        $\{1, 50, 100\}$ en utilisant la méthode \texttt{isin()}.
+\end{itemize}
+
+Cela illustre l'utilisation de \texttt{filter} (ou \texttt{where})
+et des expressions de colonnes.
+
+\subsection{Tâche 1.4~: tri et limitation}
+
+Toujours sur \texttt{ratings}, les opérations suivantes ont été réalisées~:
+\begin{itemize}
+  \item affichage des 20 plus hautes évaluations (tri par
+        \texttt{rating} décroissant),
+  \item affichage des 10 plus basses évaluations de l'utilisateur
+        \texttt{600},
+  \item tri combiné par \texttt{rating} décroissant puis
+        \texttt{timestamp} croissant.
+\end{itemize}
+
+On utilise \texttt{orderBy} avec des colonnes ordonnées
+ascendantes ou descendantes.
+
+\subsection{Tâche 1.5~: colonnes dérivées}
+
+De nouvelles colonnes ont été créées~:
+\begin{itemize}
+  \item \texttt{rating\_x2 = rating * 2},
+  \item \texttt{positive\_rating}~: vaut 1 si \texttt{rating} $\geq 4$,
+        sinon 0 (via \texttt{when} et \texttt{otherwise}),
+  \item \texttt{log\_rating}~: $\log_{10}(rating + 1)$.
+\end{itemize}
+
+Cette étape montre comment enrichir un DataFrame avec des
+colonnes calculées.
+
+\subsection{Tâche 1.6~: valeurs manquantes}
+
+Même si le jeu de données MovieLens ne contient pas de valeurs
+manquantes, une colonne artificielle \texttt{fake\_null\_col} a
+été ajoutée avec des valeurs nulles, puis~:
+\begin{itemize}
+  \item remplissage des valeurs nulles avec \texttt{fillna},
+  \item remplacement conditionnel de certaines valeurs de \texttt{rating}
+        (par exemple transformer les notes 5 en 10) avec \texttt{when},
+  \item suppression de lignes contenant des valeurs nulles avec
+        \texttt{dropna}.
+\end{itemize}
+
+\subsection{Tâche 1.7~: distinct et déduplication}
+
+Des opérations de déduplication ont été menées~:
+\begin{itemize}
+  \item comptage du nombre d'utilisateurs distincts,
+  \item comptage du nombre de films distincts notés,
+  \item recherche d'éventuels doublons sur les paires
+        \texttt{(userId, movieId)},
+  \item suppression potentielle de doublons avec
+        \texttt{dropDuplicates}.
+\end{itemize}
+
+\section{Tâche 2~: agrégations et fonctions de fenêtre}
+
+\subsection{Tâche 2.1~: agrégations simples}
+
+Sur le DataFrame \texttt{ratings}, les agrégations suivantes
+ont été calculées~:
+\begin{itemize}
+  \item minimum, maximum et moyenne des notes,
+  \item nombre total d'évaluations,
+  \item nombre d'évaluations par \texttt{movieId}.
+\end{itemize}
+
+Cela utilise les fonctions d'agrégation \texttt{min}, \texttt{max},
+\texttt{avg}, \texttt{count}.
+
+\subsection{Tâche 2.2~: groupBy}
+
+Les agrégations suivantes ont été calculées avec \texttt{groupBy}~:
+\begin{itemize}
+  \item moyenne et nombre de notes par film,
+  \item moyenne et nombre de notes par utilisateur.
+\end{itemize}
+
+Ces résultats donnent une première idée de la popularité des films
+et de l'activité des utilisateurs.
+
+\subsection{Tâche 2.3~: top films}
+
+Deux types de ``top'' ont été calculés~:
+\begin{itemize}
+  \item les 20 films les plus notés (en termes de nombre total
+        d'évaluations),
+  \item les 20 meilleurs films en moyenne, en imposant un seuil
+        minimal de 50 évaluations pour éviter les biais dus à un
+        faible nombre de notes.
+\end{itemize}
+
+Une jointure avec \texttt{movies} permet d'ajouter les titres des films.
+
+\subsection{Tâche 2.4~: fonctions de fenêtre}
+
+Des fonctions de fenêtre (\emph{window functions}) ont été utilisées
+avec des partitions par \texttt{movieId} ou \texttt{userId}~:
+\begin{itemize}
+  \item classement des évaluations dans l'ordre chronologique
+        (\texttt{row\_number} par film),
+  \item colonne de décalage (\texttt{lag}) pour obtenir la note
+        précédente d'un même utilisateur,
+  \item moyenne de la note calculée en fenêtre par film
+        (moyenne glissante).
+\end{itemize}
+
+Ces fonctionnalités sont utiles pour analyser des données séquentielles.
+
+\section{Tâche 3~: Spark SQL}
+
+\subsection{Vues temporaires}
+
+Les DataFrames \texttt{ratings} et \texttt{movies} ont été
+enregistrés comme vues temporaires \texttt{ratings\_table}
+et \texttt{movies\_table} grâce à
+\texttt{createOrReplaceTempView}. Cela permet d'écrire des
+requêtes SQL directement sur ces tables.
+
+\subsection{Tâche 3.1~: requêtes SQL simples}
+
+Plusieurs requêtes SQL simples ont été exécutées~:
+\begin{itemize}
+  \item affichage des 20 premières lignes,
+  \item comptage du nombre total de notes,
+  \item comptage d'utilisateurs distincts,
+  \item calcul de la note moyenne globale.
+\end{itemize}
+
+\subsection{Tâche 3.2~: regroupements et classement}
+
+En SQL, les mêmes agrégations que précédemment ont été
+reproduites~:
+\begin{itemize}
+  \item moyenne et nombre de notes par film (avec jointure
+        pour récupérer le titre),
+  \item meilleurs et pires films sous contrainte d'un nombre
+        minimal de notes (par exemple au moins 100),
+  \item utilisateurs les plus actifs (ceux qui notent le plus).
+\end{itemize}
+
+\subsection{Tâche 3.3~: CASE WHEN et catégories de notes}
+
+Une catégorisation des notes a été implémentée en SQL avec
+\texttt{CASE WHEN}~:
+\begin{itemize}
+  \item notes $\geq 4.0$~: catégorie \texttt{high},
+  \item notes entre 3.0 et 3.9~: catégorie \texttt{medium},
+  \item notes $< 3.0$~: catégorie \texttt{low}.
+\end{itemize}
+
+Une distribution du nombre de notes par catégorie a ensuite été
+calculée.
+
+\subsection{Tâche 3.4~: fenêtres en SQL}
+
+Des fonctions de fenêtre SQL ont été utilisées pour~:
+\begin{itemize}
+  \item obtenir, pour chaque genre, le top 10 des films selon leur
+        note moyenne (avec explosion de la colonne \texttt{genres}),
+  \item déterminer la première note de chaque utilisateur
+        (via \texttt{ROW\_NUMBER} et filtrage),
+  \item calculer une moyenne glissante de la note par film en fonction
+        du temps.
+\end{itemize}
+
+\section{Tâche 4~: jointures et analyse des genres}
+
+\subsection{Tâche 4.1~: jointure de base}
+
+Un DataFrame \texttt{ratings\_movies} a été créé en joignant
+\texttt{ratings} et \texttt{movies} sur \texttt{movieId}. On a
+ainsi pu afficher des triplets \texttt{(userId, title, rating)}
+et effectuer des analyses combinant notes et informations sur
+les films.
+
+\subsection{Tâche 4.2~: parsing et explosion des genres}
+
+La colonne \texttt{genres} est une chaîne de caractères de type
+\texttt{Action|Comedy|Drama}. Les étapes suivantes ont été réalisées~:
+\begin{itemize}
+  \item séparation de la chaîne en tableau avec \texttt{split},
+  \item explosion du tableau en plusieurs lignes avec \texttt{explode},
+  \item calcul du nombre de notes et de la note moyenne par genre.
+\end{itemize}
+
+\subsection{Tâche 4.3~: agrégations par genre, titre et année}
+
+À partir du DataFrame explosé sur les genres~:
+\begin{itemize}
+  \item calcul de la note moyenne par genre,
+  \item calcul du nombre de notes et de la note moyenne par film
+        (titre),
+  \item extraction de l'année depuis le titre au format
+        \texttt{Titre (YYYY)} à l'aide d'une expression régulière,
+  \item calcul du nombre de notes et de la note moyenne par
+        couple (genre, année).
+\end{itemize}
+
+\subsection{Tâche 4.4~: left anti join}
+
+Une jointure \emph{left anti} entre \texttt{movies} et \texttt{ratings}
+sur \texttt{movieId} a permis d'identifier les films présents dans
+\texttt{movies.csv} mais n'ayant reçu aucune note. Le nombre de ces
+films a été compté.
+
+\section{Tâche 5~: classification binaire avec MLlib}
+
+\subsection{Tâche 5.1~: création du label}
+
+L'objectif est de prédire si une note sera $\geq 4.0$ ou non.
+Pour cela, une colonne \texttt{label} a été ajoutée au DataFrame
+\texttt{ratings}~:
+\[
+  \text{label} =
+  \begin{cases}
+    1 & \text{si } \text{rating} \geq 4.0, \\
+    0 & \text{sinon.}
+  \end{cases}
+\]
+
+\subsection{Tâche 5.2~: features et VectorAssembler}
+
+Plusieurs variables ont été utilisées comme \emph{features}~:
+\begin{itemize}
+  \item la note \texttt{rating} ,
+  \item le \texttt{timestamp} brut,
+  \item un \texttt{timestamp} normalisé entre 0 et 1,
+  \item le nombre total de notes données par chaque utilisateur
+        (\texttt{user\_rating\_count}),
+  \item un \texttt{log\_timestamp} comme transformation logarithmique
+        du temps.
+\end{itemize}
+
+La normalisation du \texttt{timestamp} se fait en utilisant le
+minimum et le maximum des timestamps dans le jeu de données,
+puis en calculant~:
+\[
+  \text{norm\_timestamp} =
+  \frac{\text{timestamp} - \text{min\_ts}}{\text{max\_ts} - \text{min\_ts}}.
+\]
+
+Ensuite, un \texttt{VectorAssembler} regroupe ces colonnes
+numériques en un unique vecteur de features, stocké dans une
+colonne \texttt{features}.
+
+\subsection{Tâche 5.3~: séparation train / test}
+
+Le DataFrame des features et du label a été séparé aléatoirement
+en deux ensembles~:
+\begin{itemize}
+  \item 70\% pour l'entraînement (train),
+  \item 30\% pour le test.
+\end{itemize}
+
+\subsection{Tâche 5.4~: entraînement d'une régression logistique}
+
+Un modèle de \texttt{LogisticRegression} a été entraîné sur
+l'ensemble d'entraînement. Après l'entraînement~:
+\begin{itemize}
+  \item les coefficients et l'interception (biais) du modèle
+        ont été affichés,
+  \item le modèle a été appliqué à l'ensemble de test pour
+        produire des prédictions et des probabilités.
+\end{itemize}
+
+\subsection{Tâche 5.5~: évaluation du modèle}
+
+Les performances de la régression logistique ont été évaluées
+avec plusieurs métriques~:
+\begin{itemize}
+  \item l'aire sous la courbe ROC (AUC) via
+        \texttt{BinaryClassificationEvaluator},
+  \item la matrice de confusion (TP, FP, TN, FN) calculée à partir
+        des prédictions,
+  \item l'accuracy, la précision et le rappel en fonction de ces
+        quantités.
+\end{itemize}
+
+Ces métriques donnent une vision globale de la qualité de la
+classification.
+
+\subsection{Tâche 5.6~: amélioration du modèle}
+
+Pour améliorer et comparer les performances, d'autres modèles
+ont été entraînés~:
+\begin{itemize}
+  \item un \texttt{DecisionTreeClassifier} (arbre de décision),
+  \item un \texttt{RandomForestClassifier} (forêt aléatoire),
+\end{itemize}
+
+en utilisant les mêmes features. Les AUC correspondants ont été
+calculés, permettant de comparer les différents algorithmes.
+
+\section{Tâche 6~: performance et exécution}
+
+\subsection{Tâche 6.1~: partitions}
+
+Le nombre de partitions des DataFrames \texttt{ratings} et
+\texttt{movies} a été inspecté via
+\texttt{rdd.getNumPartitions()}. Ce nombre contrôle le degré
+de parallélisme des traitements.
+
+\subsection{Tâche 6.2~: repartition et coalesce}
+
+Deux opérations ont été comparées~:
+\begin{itemize}
+  \item \texttt{repartition(n)}~: redistribue les données, implique
+        généralement un \emph{shuffle} ,
+  \item \texttt{coalesce(n)}~: réduit le nombre de partitions avec
+        peu ou pas de \emph{shuffle}.
+\end{itemize}
+
+Les plans physiques de ces opérations ont été observés avec
+\texttt{explain(True)} pour voir l'impact sur les étapes
+d'exécution.
+
+\subsection{Tâche 6.3~: cache et temps d'exécution}
+
+Le DataFrame \texttt{ratings} a été mis en cache (et
+repartitionné)~:
+\begin{itemize}
+  \item mesure du temps de \texttt{count()} sur la première exécution,
+  \item mesure du temps sur une seconde exécution (qui profite du cache),
+  \item même type de mesure pour le calcul de la moyenne de note
+        par film, calculée deux fois.
+\end{itemize}
+
+Cela montre l'intérêt du cache pour des calculs répétés sur les
+mêmes données.
+
+\subsection{Tâche 6.4~: analyse des plans d'exécution}
+
+La méthode \texttt{explain(True)} a été utilisée pour analyser
+les plans physiques~:
+\begin{itemize}
+  \item d'une jointure entre \texttt{ratings} et \texttt{movies},
+  \item d'un \texttt{groupBy} avec agrégation,
+  \item d'une fonction de fenêtre (moyenne de notes par film).
+\end{itemize}
+
+Ces plans mettent en évidence les frontières de \emph{shuffle}
+et les différentes étapes (lecture, projection, agrégation,
+jointure), ce qui est essentiel pour comprendre et
+optimiser les performances de Spark.
+
+\section{Conclusion}
+
+Ce projet a permis de mettre en pratique un large éventail de
+fonctionnalités de PySpark sur un jeu de données réel~:
+\begin{itemize}
+  \item chargement et exploration de données massives avec les
+        DataFrames,
+  \item filtrage, tri, colonnes dérivées et gestion des valeurs
+        manquantes,
+  \item agrégations avancées et fonctions de fenêtre,
+  \item utilisation de Spark SQL pour effectuer des requêtes
+        déclaratives,
+  \item jointures et traitement de chaînes (genres de films),
+  \item mise en place d'un problème de classification binaire avec
+        MLlib et comparaison de plusieurs modèles,
+  \item introduction aux notions de partitions, cache et analyse
+        des plans d'exécution.
+\end{itemize}
+
+\end{document}

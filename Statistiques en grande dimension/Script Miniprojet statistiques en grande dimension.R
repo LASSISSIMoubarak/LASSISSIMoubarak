@@ -53,7 +53,7 @@ validationplot(PCR, val.type="RMSEP", type="b", pch=16)
  plot(PCR$loadings[,3], type="l", col="green", main="Loading 3", xlab="Index", ylab="Value")
  grid()
  #Quatrième composante
- plot(PCR$loadings[,4], type="l", col="blue", main="Loading 4", xlab="Index", ylab="Value")
+ plot(PCR$loadings[,4] xlab="Index", ylab="Value")
  grid()
  #Cinquième composante
  plot(PCR$loadings[,5], type="l", col="black", main="Loading 5", xlab="Index", ylab="Value")

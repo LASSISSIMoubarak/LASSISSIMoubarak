@@ -17,6 +17,7 @@ ven/
 venv/
 env/
 .env
+.conda/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -44,3 +45,7 @@ dist/
 # Misc
 .DS_Store
 Thumbs.db
+*.csv
+*.jpeg
+*.jpg   
+*.png

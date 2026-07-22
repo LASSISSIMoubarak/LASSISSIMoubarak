@@ -1,0 +1,367 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{Rapport sur le mini-projet MapReduce\newline Analyse des critiques Amazon Movies \\ (Notebook ``Moubarak\_LASSISSI\_\_02\_Exe\_MapReduce'')}
+\author{Moubarak LASSISSI}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+
+Ce mini-projet a pour objectif de mettre en pratique le paradigme
+\textbf{MapReduce} en utilisant un jeu de données réel~: les critiques
+(Amazon Reviews) de la catégorie \emph{Movies \\& TV}. Dans le rôle
+d'un data engineer pour une plateforme de streaming, le but est de~:
+\begin{itemize}
+  \item compter le nombre total de critiques par film,\
+  \item calculer la note moyenne par film,\
+  \item extraire des mots-clés fréquents dans les textes de critiques,\
+  \item joindre les notes moyennes avec les mots-clés dominants par film.
+\end{itemize}
+
+Tout cela est réalisé avec des programmes \texttt{mapper} / \texttt{reducer}
+écrits en Python (mode \emph{Hadoop Streaming}) et exécutés en local
+sur un environnement type Colab/Hadoop.
+
+Ce rapport présente d'abord un rappel du modèle MapReduce, puis décrit
+le jeu de données utilisé et les différentes tâches codées dans le
+notebook.
+
+\section{Rappel sur le modèle MapReduce}
+
+\subsection{Principe général}
+
+MapReduce est un modèle de programmation distribué, introduit par Google,
+qui permet de traiter de gros volumes de données de façon parallèle
+sur un cluster.
+
+Un job MapReduce comporte classiquement deux phases principales~:
+\begin{itemize}
+  \item \textbf{Map}~: applique une fonction à chaque enregistrement d'entrée
+        et émet des paires clé--valeur \((k, v)\).\
+  \item \textbf{Reduce}~: agrège les valeurs associées à une même clé~: pour
+        une clé \(k\), la fonction de reduce reçoit la liste de toutes les
+        valeurs associées et produit un ou plusieurs résultats agrégés.
+\end{itemize}
+
+Entre ces deux phases, le framework Hadoop se charge automatiquement
+du \emph{shuffle} et du \emph{sort}~: les paires émises par les mappers
+sont triées par clé et réparties vers les reducers correspondants.
+
+\subsection{Hadoop Streaming et scripts Python}
+
+Dans ce projet, les mappers et reducers sont écrits en Python et
+utilisés via \textbf{Hadoop Streaming}. Dans ce mode~:
+\begin{itemize}
+  \item le mapper lit les données depuis l'entrée standard (\texttt{stdin})
+        ligne par ligne et écrit ses sorties sur la sortie standard
+        (\texttt{stdout}),\
+  \item le reducer lit les sorties triées des mappers sur \texttt{stdin},
+        agrège par clé et écrit les résultats finaux sur \texttt{stdout}.
+\end{itemize}
+
+Cette approche permet de bénéficier de l'orchestration Hadoop en restant
+sur un langage familier (Python).
+
+\section{Jeu de données et préparation de l'environnement}
+
+\subsection{Jeu de données Amazon Movies \\& TV 5-core}
+
+Le notebook utilise le jeu de données \emph{Amazon Movies \\& TV 5-core},
+disponible publiquement. Chaque enregistrement est un objet JSON avec
+notamment les champs~:
+\begin{itemize}
+  \item \texttt{reviewerID}~: identifiant du critique,\
+  \item \texttt{asin}~: identifiant unique du produit (ici un film),\
+  \item \texttt{reviewText}~: texte complet de la critique,\
+  \item \texttt{overall}~: note globale (entre 1 et 5 étoiles),\
+  \item \texttt{vote}~: nombre de votes utiles pour la critique,\
+  \item \texttt{category}~: ici toujours ``Movies \\& TV''.
+\end{itemize}
+
+Les données brutes sont stockées dans un fichier compressé~:\\
+\texttt{Movies\_and\_TV\_5.json.gz} où chaque ligne est un objet JSON.
+
+\subsection{Installation locale de Hadoop}
+
+Dans les premières cellules, l'environnement est préparé pour
+exécuter Hadoop en mode local~:
+\begin{itemize}
+  \item installation de Java 8 (\texttt{openjdk-8-jdk-headless}),\
+  \item téléchargement de Hadoop~3.3.6 depuis le site officiel,\
+  \item décompression de l'archive,\
+  \item définition des variables d'environnement \texttt{JAVA\_HOME},
+        \texttt{HADOOP\_HOME} et mise à jour du \texttt{PATH}.
+\end{itemize}
+
+Cela permet ensuite d'utiliser les commandes Hadoop (par exemple
+\texttt{hadoop jar ...} ou le binaire de streaming) si nécessaire.
+
+\subsection{Chargement et conversion des données}
+
+Le fichier compressé \texttt{Movies\_and\_TV\_5.json.gz} est téléchargé
+puis lu en Python avec le module \texttt{gzip}. Le code~:
+\begin{itemize}
+  \item parcourt chaque ligne,\
+  \item effectue un \texttt{json.loads(line)} pour transformer la ligne
+        en dictionnaire Python,\
+  \item gère les erreurs de parsing avec un \texttt{try/except} pour
+        ignorer les lignes malformées,\
+  \item accumule les enregistrements dans une liste.
+\end{itemize}
+
+Ensuite, afin de faciliter l'utilisation en mode streaming, les données
+sont réécrites dans un fichier \texttt{movies.json} au format
+\textbf{JSON Lines} (une ligne = un objet JSON), en limitant à
+900~000 enregistrements pour réduire les temps d'exécution en environnement
+Colab. Sur un vrai cluster, cette limitation n'est pas nécessaire.
+
+Enfin, quelques lignes de \texttt{movies.json} sont affichées pour
+vérifier la structure des enregistrements.
+
+\section{Tâche 1~: nombre total de critiques par film}
+
+\subsection{Objectif}
+
+La première tâche vise à compter le nombre total de critiques
+(reviews) pour chaque film identifié par son code \texttt{asin}.
+Il s'agit d'un équivalent \emph{movie count} d'un classique
+\emph{word count}.
+
+\subsection{Mapper de la tâche 1}
+
+Le fichier \texttt{mapper\_task1.py} contient la fonction \texttt{mapper()}~:
+\begin{itemize}
+  \item lecture ligne par ligne sur \texttt{stdin},\
+  \item pour chaque ligne non vide, tentative de \texttt{json.loads},\
+  \item extraction de \texttt{asin},\
+  \item si l'asin est présent, émission de la paire
+        \texttt{"asin\textbackslash t1"}.
+\end{itemize}
+
+Autrement dit, pour chaque critique, le mapper émet
+\((\text{asin}, 1)\).
+
+\subsection{Reducer de la tâche 1}
+
+Le fichier \texttt{reduce\_task1.py} implémente la fonction
+\texttt{reducer()}~:
+\begin{itemize}
+  \item les lignes sont supposées triées par clé (\texttt{asin}),\
+  \item on maintient une variable \texttt{current\_asin} et un compteur
+        \texttt{current\_count},\
+  \item à chaque changement d'\texttt{asin}, on affiche
+        \texttt{"current\_asin\textbackslash tcurrent\_count"} et on
+        réinitialise le compteur pour la nouvelle clé,\
+  \item à la fin, on affiche le résultat pour la dernière clé.
+\end{itemize}
+
+Le résultat final pour chaque film est donc~:
+\[\text{asin} \quad \text{total\_reviews}.\]
+
+\subsection{Tests et tri des résultats}
+
+Pour tester la chaîne mapper--reducer, le notebook utilise~:
+\begin{itemize}
+  \item un échantillon de 1000 lignes de \texttt{movies.json}
+        (avec \texttt{head -1000}),\
+  \item un tri intermédiaire avec la commande Unix \texttt{sort},\
+  \item l'exécution du reducer et l'affichage de quelques lignes
+        de sortie (\texttt{head -5}).
+\end{itemize}
+
+Ensuite, la chaîne complète est appliquée à l'ensemble du fichier
+pour générer \texttt{task1\_output.txt}, qui est ensuite trié
+par nombre de critiques décroissant afin de lister les films
+les plus critiqués.
+
+\section{Tâche 2~: note moyenne par film}
+
+\subsection{Objectif}
+
+La deuxième tâche calcule la \textbf{note moyenne} pour chaque film
+à partir du champ \texttt{overall}. Pour un film donné, on veut~:
+\[
+  \text{average\_rating} = \frac{\sum_{i=1}^{n} \text{rating}_i}{n}
+\]
+
+\subsection{Mapper de la tâche 2}
+
+Le fichier \texttt{mapper\_task2.py} lit chaque ligne JSON, en extrait~:
+\begin{itemize}
+  \item \texttt{asin},\
+  \item \texttt{overall} (la note).
+\end{itemize}
+
+Si ces deux champs sont présents, le mapper émet la paire
+\texttt{"asin\textbackslash toverall"}.
+
+\subsection{Reducer de la tâche 2}
+
+Le reducer \texttt{reduce\_task2.py} agrège les notes par film~:
+\begin{itemize}
+  \item comme pour la tâche 1, les entrées sont triées par clé,\
+  \item pour chaque \texttt{asin}, on cumule la somme des notes
+        (\texttt{sum\_ratings}) et le nombre de notes
+        (\texttt{count\_ratings}),\
+  \item au changement de clé, on calcule la moyenne
+        \texttt{sum\_ratings / count\_ratings} et on l'affiche,\
+  \item à la fin, on traite la dernière clé.
+\end{itemize}
+
+La sortie finale \texttt{task2\_output.txt} contient pour chaque
+film~:\\
+\texttt{asin\textbackslash taverage\_rating}.
+
+\subsection{Exploration des résultats}
+
+Comme pour la tâche 1, un échantillon est testé sur 1000 lignes
+puis le résultat complet est enregistré dans \texttt{task2\_output.txt}.
+Un tri décroissant sur la seconde colonne permet de voir les films
+ayant les meilleures notes moyennes (en haut du classement).
+
+\section{Tâche 3~: extraction de mots-clés fréquents}
+
+\subsection{Objectif}
+
+La troisième tâche ajoute une dimension \textbf{textuelle} en
+analysant le champ \texttt{reviewText}. L'idée est d'extraire,
+pour chaque film, les mots les plus fréquents dans les critiques,
+après nettoyage et suppression des mots vides (\emph{stopwords}).
+
+\subsection{Prétraitement du texte}
+
+Le mapper de la tâche 3 (
+\texttt{mapper\_task3.py}) utilise la bibliothèque NLTK pour~:
+\begin{itemize}
+  \item télécharger les ressources nécessaires~: stopwords anglais
+        et tokeniseur (\texttt{punkt}),\
+  \item définir une fonction \texttt{clean\_text(text)} qui~:
+        \begin{itemize}
+          \item met le texte en minuscules,\
+          \item tokenise le texte en mots,\
+          \item enlève les mots non alphabétiques,\
+          \item enlève les mots vides (stopwords anglais).
+        \end{itemize}
+\end{itemize}
+
+\subsection{Mapper de la tâche 3}
+
+Pour chaque ligne JSON, le mapper~:
+\begin{itemize}
+  \item lit et parse la ligne en objet JSON,\
+  \item récupère \texttt{asin} et \texttt{reviewText},\
+  \item applique \texttt{clean\_text} au texte pour obtenir une
+        liste de tokens pertinents,\
+  \item pour chaque mot filtré, émet une paire de la forme~:
+        \texttt{"asin:token\textbackslash t1"}.
+\end{itemize}
+
+Il s'agit donc d'un word count par \texttt{(asin, mot)}.
+
+\subsection{Reducer de la tâche 3}
+
+Le reducer \texttt{reduce\_task3.py} est un agrégateur classique~:
+\begin{itemize}
+  \item il lit des lignes \texttt{"asin:token\textbackslash tcount"},\
+  \item les entrées étant triées, il maintient un \texttt{current\_key}
+        (ici \texttt{"asin:token"}) et un compteur,\
+  \item pour chaque changement de clé, il affiche la clé et la somme
+        des occurrences,\
+  \item à la fin, il affiche le dernier résultat.
+\end{itemize}
+
+Le fichier de sortie \texttt{task3\_output.txt} contient donc
+pour chaque couple (film, mot) le nombre total d'occurrences du mot
+dans les critiques de ce film.
+
+\section{Tâche 4~: jointure des notes moyennes et des mots-clés}
+
+\subsection{Objectif}
+
+La quatrième tâche combine les résultats des tâches 2 et 3 pour
+obtenir, pour chaque film~:
+\begin{itemize}
+  \item son identifiant \texttt{asin},\
+  \item sa note moyenne (issue de \texttt{task2\_output.txt}),\
+  \item la liste de ses mots-clés les plus fréquents (issue de
+        \texttt{task3\_output.txt}).
+\end{itemize}
+
+On réalise pour cela une \textbf{reduce-side join}~: les deux fichiers
+sont concaténés puis passés dans un même mapper qui les marque
+respectivement comme données de notes (``R'') ou de mots-clés (``K'').
+
+\subsection{Mapper de la tâche 4}
+
+Le fichier \texttt{mapper\_task4.py} lit des lignes issues soit de
+\texttt{task2\_output.txt}, soit de \texttt{task3\_output.txt}~:
+\begin{itemize}
+  \item si la partie clé (avant la tabulation) contient un deux-points
+        (\texttt{:}), on la considère comme provenant de la tâche 3
+        (format \texttt{asin:keyword}) et on émet~:\\
+        \texttt{"asin\textbackslash tK:keyword:count"},\
+  \item sinon, elle provient de la tâche 2 (format \texttt{asin\textbackslash trating})
+        et on émet~:\\
+        \texttt{"asin\textbackslash tR:rating"}.
+\end{itemize}
+
+Ainsi, toutes les données relatives à un même \texttt{asin} seront
+réunies par le framework Hadoop sur un seul reducer.
+
+\subsection{Reducer de la tâche 4}
+
+Le reducer \texttt{reduce\_task4.py} reçoit, pour un \texttt{asin}
+donné, une liste de valeurs préfixées par \texttt{R:} (une seule
+note moyenne) ou \texttt{K:} (plusieurs couples mot--compte). Il~:
+\begin{itemize}
+  \item initialise \texttt{rating = None} et \texttt{keywords = []},\
+  \item pour chaque valeur commencant par \texttt{R:}, enregistre
+        la note moyenne,\
+  \item pour chaque valeur \texttt{K:mot:compte}, ajoute \texttt{(mot, compte)}
+        à la liste des mots-clés,\
+  \item au changement d'\texttt{asin}, trie la liste des mots-clés
+        par fréquence décroissante, construit une chaîne de la forme
+        \texttt{"mot1(c1), mot2(c2), ..."} et affiche~:\\
+        \texttt{"asin\textbackslash trating\textbackslash tmot1(c1), ..."},\
+  \item répète l'opération pour la dernière clé.
+\end{itemize}
+
+Le résultat \texttt{task4\_output.txt} fournit ainsi une vision
+synthétique par film~: pour chaque \texttt{asin}, on voit la note
+moyenne et les mots dominants utilisés dans les critiques.
+
+\section{Conclusion}
+
+Ce mini-projet MapReduce sur les critiques Amazon Movies \\& TV
+permet de mettre en pratique plusieurs compétences clés~:
+\begin{itemize}
+  \item installation et configuration d'un environnement Hadoop
+        local (Java, Hadoop, variables d'environnement),\
+  \item préparation d'un jeu de données volumineux (JSON compressé
+        transformé en JSON Lines),\
+  \item écriture de mappers et reducers en Python pour des tâches
+        d'agrégation (counts, moyennes),\
+  \item traitement de texte distribué pour l'extraction de mots-clés,\
+  \item réalisation d'une \emph{reduce-side join} entre deux flux
+        de résultats MapReduce.
+\end{itemize}
+
+Les sorties produites (nombre de critiques, note moyenne, mots-clés
+les plus fréquents par film, jointure finale) constituent une base
+précieuse pour comprendre la popularité des films, la satisfaction
+des spectateurs et les thèmes récurrents évoqués dans leurs avis.
+
+\end{document}

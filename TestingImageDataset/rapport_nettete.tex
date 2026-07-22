@@ -1,0 +1,68 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\title{Rapport d'analyse de la netteté d'images}
+\author{Moubarak LASSISSI}
+\date{Février 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{objectif}
+Le  but est d'évaluer l'impact de la taille de la fenêtre (5, 7, 9, 11, 13, 15, 17, 19, 21) sur les performances de trois métriques de netteté : Laplacian (LAP2), Variance of Laplacian (LAP4) et Gray-level Variance (STA3). Chaque métrique sera appliquée à un ensemble d'images nettes et floues pour déterminer comment la taille de la fenêtre influence la capacité de chaque métrique à différencier les deux types d'images.  
+
+\section*{Rappel sur les métriques utilisées}
+\begin{itemize}
+    \item \textbf{Laplacian (LAP2)} :
+    Cette mesure, proposée par Nayar, utilise le Laplacien modifié dans une fenêtre locale :
+    \begin{equation*}
+        \text{LAP2}(I) = \sum_{(i,j) \in O(x,y)} D_m I(i,j)
+    \end{equation*}
+    où $D_m I(i,j)$ est le Laplacien modifié du pixel $(i,j)$, calculé par :
+    \begin{equation*}
+        D_m I = |I * L_X| + |I * L_Y|
+    \end{equation*}
+    avec $L_X = [1\ -2\ 1]$ et $L_Y = L_X^T$ (transposée).
+    \item \textbf{Variance of Laplacian (LAP4)} :
+    Cette mesure utilise la variance du Laplacien de l'image dans une fenêtre locale comme indicateur de mise au point :
+    \begin{equation*}
+        \text{LAP4}(I) = \sum_{(i,j) \in O(x,y)} \left( \Delta I(i,j) - \overline{\Delta I} \right)^2
+    \end{equation*}
+    où $\Delta I(i,j)$ est la valeur du Laplacien au pixel $(i,j)$, $\overline{\Delta I}$ est la moyenne des valeurs du Laplacien dans la fenêtre $O(x,y)$.
+    \item \textbf{Gray-level Variance (STA3)} :
+    Cette mesure utilise la variance des niveaux de gris dans une fenêtre locale comme indicateur de netteté :
+    \begin{equation*}
+        \text{STA3}(I) = \sum_{(i,j) \in O(x,y)} \left( I(i,j) - m \right)^2
+    \end{equation*}
+    où $I(i,j)$ est le niveau de gris au pixel $(i,j)$ et $m$ est la moyenne des niveaux de gris des pixels dans la fenêtre $O(x,y)$.
+\end{itemize}
+
+\section*{Données utilisées}
+Les images disponibles sont directement dans le fichier du TP , il s'agit des paires d'images nettes et floues suivantes. 
+Un exemple est donnée ci-dessous :
+\begin{figure}[h!]
+    \centering
+    \begin{tabular}{cc}
+        \includegraphics[width=0.4\textwidth]{image_nette_example.png} &
+        \includegraphics[width=0.4\textwidth]{image_floue_example.png} \\
+        (a) Image nette & (b) Image floue \\
+    \end{tabular}
+    \caption{Exemple d'images nettes et floues utilisées pour l'analyse}
+    \label{fig:exampleimages}
+\end{figure}
+
+\section*{Résultats}    
+Pour chaque métrique, les scores de netteté ont été calculés pour différentes tailles de fenêtres. Pour chaque image, le score maximal est retenu en fonction de la métrique et de la taille de la fenêtre utilisée.
+Il apparaît que la métrique LAP4 (Variance of Laplacian) est la plus sensible aux variations de netteté, suivie par STA3, quelle que soit la taille de la fenêtre utilisée.
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{graphique_nettete.png}
+    \caption{Scores de netteté en fonction de la taille de la fenêtre pour chaque métrique}
+    \label{fig:nettetemetrics}
+\end{figure}
+
+\end{document}
