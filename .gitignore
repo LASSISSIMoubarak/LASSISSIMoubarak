@@ -49,3 +49,5 @@ Thumbs.db
 *.jpeg
 *.jpg   
 *.png
+*.pkl
+*.zip
