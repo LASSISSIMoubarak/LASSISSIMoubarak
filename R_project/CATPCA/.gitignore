@@ -1,6 +1,0 @@
-*.pdf
-*.RData
-ven/
-.venv/
-__pycache__/
-*.pyc
