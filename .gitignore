@@ -79,3 +79,6 @@ catboost_info/
 *.nc
 # Licences
 LICENSE*
+
+# README prive
+Candidatures/README.md
