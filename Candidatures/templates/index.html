@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cap Candidatures</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}" aria-label="Cap Candidatures, accueil">
+      <span class="brand-mark">CC</span><span>cap<span class="brand-light">/</span>candidatures</span>
+    </a>
+    <div class="top-actions">
+      <span class="local-state {% if ollama.ready %}is-ready{% else %}is-offline{% endif %}"><span class="state-dot"></span>{% if ollama.ready %}Qwen local prêt{% else %}Qwen indisponible{% endif %}</span>
+      <a class="button button-outline" href="{{ url_for('export_xlsx') }}" title="Exporter les candidatures en Excel">Export Excel</a>
+    </div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-heading"><p class="eyebrow">Mon dossier</p><h2>Profil candidat</h2><p class="muted">Ces informations restent sur cet ordinateur.</p></div>
+      <form method="post" action="{{ url_for('save_profile') }}" class="profile-form" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="selected" value="{{ selected.id if selected else '' }}">
+        <label>Nom complet<input name="full_name" value="{{ profile.full_name }}" placeholder="Ton nom" autocomplete="name"></label>
+        <div class="field-pair">
+          <label>E-mail<input name="email" type="email" value="{{ profile.email }}" placeholder="nom@exemple.fr" autocomplete="email"></label>
+          <label>Téléphone<input name="phone" value="{{ profile.phone }}" placeholder="+33 ..." autocomplete="tel"></label>
+        </div>
+        <label>Ville ou région<input name="location" value="{{ profile.location }}" placeholder="Ex. Lyon, hybride"></label>
+        <label>Importer ton CV (PDF)
+          <input name="resume_pdf" type="file" accept="application/pdf,.pdf">
+        </label>
+        <p class="muted file-note">PDF texte uniquement, 10 Mo maximum. Le fichier n’est pas conservé ; son texte extrait est affiché ci-dessous pour vérification.</p>
+        <label>Texte du CV de référence<textarea name="resume_source" rows="14" placeholder="Importe un PDF ou colle ici le contenu de ton CV. Relis le texte extrait avant de l’utiliser.">{{ profile.resume_source }}</textarea></label>
+        <button class="button button-dark button-full" type="submit">Enregistrer le profil</button>
+      </form>
+      <div class="privacy-note"><span class="privacy-rule"></span><p>Le profil n’est transmis au modèle local que lorsque tu demandes un brouillon.</p></div>
+    </aside>
+    <main class="workspace">
+      <section class="welcome-row">
+        <div><p class="eyebrow">Espace personnel · {{ counts.total }} dossier{% if counts.total != 1 %}s{% endif %}</p><h1>Ta recherche,<br><em>bien en mouvement.</em></h1></div>
+        <div class="metrics" aria-label="Résumé des candidatures"><div><strong>{{ counts.total }}</strong><span>suivies</span></div><div><strong>{{ counts.sent }}</strong><span>envoyées</span></div><div><strong>{{ counts.interviews }}</strong><span>entretiens</span></div></div>
+      </section>
+      {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash-stack" role="status">{% for category, message in messages %}<p class="flash flash-{{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}
+      <section class="add-section">
+        <div class="section-heading"><div><p class="eyebrow">Nouvelle piste</p><h2>Ajouter une offre</h2></div><p class="muted">Colle les informations depuis le site d’emploi ; la recherche web automatique viendra ensuite.</p></div>
+        <form method="post" action="{{ url_for('add_application') }}" class="offer-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field-pair field-pair-wide">
+            <label>Intitulé du poste <span class="required">*</span><input name="position" required placeholder="Ex. Data analyst junior"></label>
+            <label>Entreprise <span class="required">*</span><input name="company" required placeholder="Nom de l’entreprise"></label>
+            <label>Lieu<input name="location" placeholder="Ville / télétravail"></label>
+          </div>
+          <div class="field-pair field-pair-wide"><label class="url-field">Lien de l’offre<input name="url" type="url" placeholder="https://..."></label></div>
+          <label>Description de l’offre<textarea name="job_description" rows="5" placeholder="Colle ici l’annonce complète pour pouvoir générer des brouillons adaptés."></textarea></label>
+          <div class="form-end"><span class="muted tiny">Les champs marqués * sont nécessaires.</span><button class="button button-accent" type="submit">Ajouter au suivi <span aria-hidden="true">→</span></button></div>
+        </form>
+      </section>
+      <section class="pipeline-section">
+        <div class="section-heading pipeline-heading"><div><p class="eyebrow">Tableau de suivi</p><h2>Mes candidatures</h2></div><span class="muted tiny">Mise à jour manuelle · exportable en Excel</span></div>
+        {% if applications %}
+          <div class="table-wrap"><table><thead><tr><th>Poste</th><th>Entreprise</th><th>Lieu</th><th>Statut</th><th></th></tr></thead>
+            <tbody>{% for item in applications %}<tr class="{% if selected and item.id == selected.id %}row-selected{% endif %}">
+              <td><a class="row-link" href="{{ url_for('index', selected=item.id) }}">{{ item.position }}</a></td><td>{{ item.company }}</td><td>{{ item.location or '—' }}</td>
+              <td><span class="status-pill">{{ item.status }}</span></td><td><a class="open-link" href="{{ url_for('index', selected=item.id) }}" aria-label="Ouvrir {{ item.position }}">Ouvrir <span aria-hidden="true">↗</span></a></td>
+            </tr>{% endfor %}</tbody>
+          </table></div>
+        {% else %}<div class="empty-state"><span class="empty-index">01</span><div><h3>Le tableau est prêt.</h3><p>Ajoute une première offre pour démarrer ton suivi.</p></div></div>{% endif %}
+      </section>
+      {% if selected %}
+        <section class="application-detail" id="detail">
+          <div class="detail-title-row"><div><p class="eyebrow">Dossier · {{ selected.company }}</p><h2>{{ selected.position }}</h2><p class="muted">{{ selected.location or 'Lieu non précisé' }}{% if selected.url %}<span class="detail-separator">·</span><a href="{{ selected.url }}" target="_blank" rel="noopener noreferrer">Voir l’offre ↗</a>{% endif %}</p></div><span class="status-pill status-large">{{ selected.status }}</span></div>
+          {% if selected.job_description %}<details class="description-block"><summary>Description de l’offre</summary><p>{{ selected.job_description }}</p></details>{% endif %}
+          <div class="draft-heading"><div><p class="eyebrow">Avec Qwen · {{ ollama.model }}</p><h3>Préparer les documents</h3></div></div>
+          <div class="prereq-status" aria-live="polite">
+            <span class="{% if has_resume %}prereq-ok{% else %}prereq-missing{% endif %}">CV de référence {% if has_resume %}enregistré{% else %}à renseigner dans le profil{% endif %}</span>
+            <span class="{% if has_job_description %}prereq-ok{% else %}prereq-missing{% endif %}">Description de l’offre {% if has_job_description %}ajoutée{% else %}à coller dans l’offre{% endif %}</span>
+            <span class="{% if ollama.ready %}prereq-ok{% else %}prereq-missing{% endif %}">Qwen local {% if ollama.ready %}prêt{% else %}indisponible{% endif %}</span>
+          </div>
+          <div class="draft-grid">
+            <article class="draft-panel"><div class="draft-panel-heading"><span class="draft-number">A</span><div><h4>CV adapté</h4><p>Réorganisé à partir de ton CV de référence.</p></div></div>
+              <form method="post" class="generation-form" action="{{ url_for('generate_draft', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="cv"><button class="button button-outline" type="submit" {% if not can_generate %}disabled{% endif %}>Générer le brouillon</button></form>
+              {% if selected.cv_draft %}<pre class="draft-output">{{ selected.cv_draft }}</pre><div class="download-options"><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='cv') }}">DOCX ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='cv', file_format='pdf') }}">PDF ↓</a></div>{% endif %}
+            </article>
+            <article class="draft-panel"><div class="draft-panel-heading"><span class="draft-number draft-number-warm">B</span><div><h4>Lettre de motivation</h4><p>Personnalisée pour l’offre, sans faits inventés.</p></div></div>
+              <form method="post" class="generation-form" action="{{ url_for('generate_draft', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="letter"><button class="button button-outline" type="submit" {% if not can_generate %}disabled{% endif %}>Générer le brouillon</button></form>
+              {% if selected.letter_draft %}<pre class="draft-output">{{ selected.letter_draft }}</pre><div class="download-options"><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter') }}">DOCX ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter', file_format='pdf') }}">PDF ↓</a></div>{% endif %}
+            </article>
+          </div>
+          <p class="review-warning">À relire impérativement : Qwen peut confondre les exigences de l’offre avec ton expérience. Vérifie chaque affirmation, date et compétence avant d’envoyer.</p>
+          <form method="post" action="{{ url_for('update_application', application_id=selected.id) }}" class="followup-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="section-heading"><div><p class="eyebrow">Après préparation</p><h3>Statut et retour</h3></div></div>
+            <div class="field-pair followup-fields"><label>Statut<select name="status">{% for status in statuses %}<option value="{{ status }}" {% if selected.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></label>
+              <label>Notes personnelles<textarea name="notes" rows="3" placeholder="Contact, échéance, relance…">{{ selected.notes }}</textarea></label>
+              <label>Réponse reçue<textarea name="reply" rows="3" placeholder="Colle ici une réponse ou un résumé d’e-mail…">{{ selected.reply }}</textarea></label>
+            </div>
+            <div class="form-end"><span class="muted tiny">Les e-mails ne sont pas lus automatiquement dans cette version.</span><button class="button button-dark" type="submit">Enregistrer le suivi</button></div>
+          </form>
+        </section>
+      {% endif %}
+      <footer class="page-footer"><span>CAP / CANDIDATURES</span><span>Local par défaut · rien n’est envoyé automatiquement</span></footer>
+    </main>
+  </div>
+  <script>
+    document.querySelectorAll(".generation-form").forEach((form) => {
+      form.addEventListener("submit", () => {
+        const button = form.querySelector("button[type='submit']");
+        button.disabled = true;
+        button.textContent = "Qwen rédige…";
+      });
+    });
+  </script>
+</body>
+</html>
