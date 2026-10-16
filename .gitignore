@@ -51,3 +51,29 @@ Thumbs.db
 *.png
 *.pkl
 *.zip
+
+# Environments
+.venv/
+ENV/
+
+# Secrets
+.env.*
+*.pem
+*.key
+
+# Local databases (e.g. Candidatures/instance)
+instance/
+*.sqlite
+*.sqlite3
+*.db
+
+# ML artefacts / data
+mlruns/
+mlartifacts/
+catboost_info/
+*.pt
+*.pth
+*.h5
+*.parquet
+*.xlsx
+*.nc
