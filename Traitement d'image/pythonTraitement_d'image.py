@@ -1,8 +1,10 @@
-import numpy as np
+import argparse
+from pathlib import Path
+
 import cv2
 import matplotlib.pyplot as plt
-from scipy.signal import fftconvolve
-from numpy.fft import fft2, ifft2, fftshift
+import numpy as np
+from numpy.fft import fft2, ifft2
 
 # ---------------------------------------------------------
 # Création de la PSF (flou gaussien)
@@ -28,29 +30,41 @@ def wiener_filter(blurred, psf, K):
     f_hat = np.real(ifft2(F_hat))
     return f_hat
 
-# --------------------------------------------------------- UTILISATION D'image réelle ---------------------------------------------------------
-image = cv2.imread("C:\\Users\\lassi\\projet\\R_project\\CATPCA\\WhatsApp Image 2025-10-20 at 23.06.46.jpeg", cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0
+def main():
+    default_image = Path(__file__).resolve().parent / "Image_folder" / "testna_slika1a.bmp"
+    parser = argparse.ArgumentParser(description="Restauration d'image par filtre de Wiener.")
+    parser.add_argument(
+        "--image",
+        type=Path,
+        default=default_image,
+        help="Image en niveaux de gris (par défaut : Image_folder/testna_slika1a.bmp)",
+    )
+    args = parser.parse_args()
 
-# PSF gaussienne
-sigma = 1.5
-psf = gaussian_psf(size=31, sigma=sigma)
+    image = cv2.imread(str(args.image), cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise FileNotFoundError(f"Impossible de lire l'image : {args.image}")
+    image = image.astype(np.float32) / 255.0
 
-# Différentes valeurs de K
-Ks = np.random.uniform(0.01, 0.1, 1000)
-results = [wiener_filter(image, psf, K) for K in Ks]
+    psf = gaussian_psf(size=31, sigma=1.5)
+    k_values = (0.01, 0.05, 0.1)
+    results = [wiener_filter(image, psf, k) for k in k_values]
 
-# ---------------------------------------------------------
-plt.figure(figsize=(12, 6))
-plt.subplot(1, 4, 1)
-plt.title("Image floutée")
-plt.imshow(image, cmap='gray')
-plt.axis('off')
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 4, 1)
+    plt.title("Image d'entrée")
+    plt.imshow(image, cmap="gray")
+    plt.axis("off")
 
-for i, K in enumerate(Ks[:3]):
-    plt.subplot(1, 4, i+2)
-    plt.title(f"K = {K}")
-    plt.imshow(results[i], cmap='gray')
-    plt.axis('off')
+    for i, (k, result) in enumerate(zip(k_values, results), start=2):
+        plt.subplot(1, 4, i)
+        plt.title(f"K = {k}")
+        plt.imshow(result, cmap="gray")
+        plt.axis("off")
 
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
+
+
+if __name__ == "__main__":
+    main()

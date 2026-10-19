@@ -1,13 +1,17 @@
 import json
 import os
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from pathlib import Path
+
+from flask import Flask, render_template, request
 import requests
 
 app = Flask(__name__)
 
-DATA_FILE = "data_base.json"
-LOG_FILE = "client_logs.txt"
-mon_URL= "http://22i008.stud.mua"
+DATA_FILE = Path(__file__).with_name("data_base.json")
+LOG_FILE = Path(__file__).with_name("client_logs.txt")
+mon_URL = os.environ.get("ANNUAIRE_URL", "http://22i008.stud.mua")
+ANNUAIRE_URL = mon_URL
+
 
 def log_client_info():
     """Log les informations du client (IP, URL)"""
@@ -84,7 +88,7 @@ def voir_annuaire():
         serveurs = response.json()
     except Exception as e:
         return f"Impossible d’accéder à l’annuaire : {e}"
-    return render_template("annuaire.html", serveurs=serveurs)
+    return render_template("Annuaire.html", serveurs=serveurs)
 
 
 @app.route("/ws/serveur/<path:server_url>")
@@ -135,5 +139,9 @@ def fusionner_serveurs():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host='22i008.stud.mua', port=5000)
+    app.run(
+        debug=os.environ.get("FLASK_DEBUG", "0") == "1",
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "5000")),
+    )
     

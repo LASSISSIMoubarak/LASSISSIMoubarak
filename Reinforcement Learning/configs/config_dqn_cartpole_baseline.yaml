@@ -1,0 +1,27 @@
+# Version SANS Prioritized Replay et SANS Target Network (Baseline)
+env: CartPole-v1
+seed: 5
+featExtractor: !!python/name:__main__.NothingToDo ''
+freqSave: 1000
+freqTest: 100
+nbTest: 5
+freqVerbose: 100
+fromFile: null
+nbEpisodes: 100000
+explo: 0.1
+gamma: 0.999
+edecay: 0.99999
+device: -1
+doubleQ: false
+batchsize: 100
+capacity: 10000
+lr: 0.0003
+layers:
+- 200
+freqOptim: 10
+ctarget: 999999999                                                                      # DESACTIVER target network (jamais update)
+optimizer: !!python/name:torch.optim.Adam ''
+prioritizedReplay: false                                                                # DESACTIVER Prioritized Replay
+vloss: !!python/name:torch.nn.SmoothL1Loss ''
+maxLengthTest: 500
+maxLengthTrain: 300

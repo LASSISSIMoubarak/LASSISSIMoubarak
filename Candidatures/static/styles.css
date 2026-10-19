@@ -21,6 +21,13 @@ h2 { margin-bottom:8px; font-size:21px; letter-spacing:-.3px; }
 .muted { color:var(--muted); font-size:12px; line-height:1.55; }
 .profile-form,.offer-form { display:grid; gap:14px; }
 .file-note { margin:-8px 0 0; font-size:10px; }
+.reference-library { margin-top:22px; padding-top:16px; border-top:1px solid #d6dbd1; }
+.reference-library h3 { margin-bottom:8px; font-size:13px; }
+.reference-library > p { margin-bottom:13px; }
+.reference-list { display:grid; gap:8px; margin:14px 0 0; padding:0; list-style:none; }
+.reference-list li { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; background:rgba(255,254,250,.7); font-size:10px; overflow-wrap:anywhere; }
+.reference-list li form { flex:0 0 auto; }
+.text-button { padding:3px 5px; border:0; background:transparent; color:var(--coral); cursor:pointer; font-size:10px; text-decoration:underline; }
 label { display:grid; gap:7px; font-size:11px; line-height:1.35; font-weight:700; color:#39443c; }
 input,textarea,select { width:100%; min-width:0; border:1px solid #d8ddd4; border-radius:3px; background:var(--white); color:var(--ink); padding:10px 11px; outline:none; font-size:12px; font-weight:400; transition:border-color .15s,box-shadow .15s; }
 input:focus,textarea:focus,select:focus { border-color:#648979; box-shadow:0 0 0 3px rgba(65,111,91,.11); }
@@ -31,6 +38,8 @@ input::placeholder,textarea::placeholder { color:#a1a9a1; }
 .button { display:inline-flex; min-height:38px; align-items:center; justify-content:center; gap:9px; padding:9px 14px; border:1px solid transparent; border-radius:3px; cursor:pointer; text-decoration:none; font-size:11px; font-weight:700; transition:background .15s,border-color .15s,transform .15s; }
 .button:hover:not(:disabled) { transform:translateY(-1px); }
 .button:disabled { cursor:not-allowed; opacity:.48; }
+.cloud-consent { display:flex; grid-template-columns:auto 1fr; align-items:start; gap:8px; font-weight:400; color:var(--muted); }
+.cloud-consent input { width:auto; margin:1px 0 0; }
 .button-dark { background:var(--pine); color:white; }
 .button-dark:hover:not(:disabled) { background:#173a31; }
 .button-accent { background:var(--coral); color:#fff; }

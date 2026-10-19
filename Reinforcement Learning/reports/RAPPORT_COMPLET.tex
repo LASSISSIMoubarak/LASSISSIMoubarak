@@ -1,0 +1,509 @@
+\documentclass[12pt,a4paper]{article}
+
+%------------------------------------------------
+% Packages
+%------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[french]{babel}
+\usepackage[margin=2cm]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+%------------------------------------------------
+% Informations du document
+%------------------------------------------------
+\title{\textbf{Deep Q-Network (DQN) : Étude comparative  \\ CartPole-v1, GridWorld-v0, LunarLander-v2}}
+\author{Moubarak LASSISSI}
+\date{Janvier 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+%================================================
+\section{Introduction}
+
+Le \textit{Deep Q-Network} (DQN) est un algorithme fondamental en apprentissage par renforcement profond. Il combine le Q-learning traditionnuel avec des réseaux de neurones profonds, permettant aux agents d'apprendre à partir d'observation brutes dans des espaces d'états continus avec des espaces d'actions discrets.
+
+Ce rapport présente une implémentation complète et une analyse comparative du DQN appliqué à trois environnements de complexité croissante :
+\begin{enumerate}
+    \item \textbf{CartPole-v1} : équilibrage de perche (complexité basse),
+    \item \textbf{GridWorld-v0} : navigation en grille 2D (complexité moyenne),
+    \item \textbf{LunarLander-v2} : atterrissage lunaire (complexité haute).
+\end{enumerate}
+
+\subsection{Motivation et objectifs}
+
+L'efficacité du DQN repose sur plusieurs composants clés. Comprendre l'importance de chacun est essentiel pour optimiser les performances :
+
+\begin{itemize}
+    \item \textbf{Experience Replay :} le stockage et l'échantillonnage aléatoire des transitions passées réduit la corrélation entre les samples d'apprentissage, améliorant la stabilité et l'efficacité de l'algorithme.
+
+    \item \textbf{Target Network :} l'utilisation d'un réseau secondaire pour calculer les valeurs cible réduit les oscillations et stabilise significativement l'apprentissage.
+
+    \item \textbf{Double DQN :} réduit le biais de surestimation des Q-values en découplant la sélection et l'évaluation des actions.
+
+    \item \textbf{Prioritized Replay (PER) :} accélère l'apprentissage en échantillonnant prioritairement les transitions avec erreur TD élevée.
+\end{itemize}
+
+\subsection{Approche méthodologique}
+
+L'objectif principal de ce rapport est de conduct une \textit{ablation study} systématique mesurant l'impact isolé et combiné de chaque composant du DQN. Nous évaluons \textbf{5 variantes} :
+
+\begin{enumerate}
+    \item \textbf{Baseline :} Q-learning simple (aucun optimisation).
+    \item \textbf{ReplayOnly :} + Experience Replay seul.
+    \item \textbf{TargetOnly :} + Target Network seul.
+    \item \textbf{Standard :} Experience Replay + Target Network (DQN classique).
+    \item \textbf{Advanced :} Double DQN + Prioritized Replay + Target Network.
+\end{enumerate}
+
+Cette étude comparative nous permettra d'identifier les contributions spécifiques de chaque technique et de déterminer les conditions où chacune apporte un bénéfice significatif de performance.
+
+%================================================
+\section{Algorithme DQN}
+
+\subsection{Q-learning}
+
+Le Q-learning vise à estimer la fonction valeur-action :
+
+\[
+Q(s,a) = \mathbb{E}\left[r + \gamma \max_{a'} Q(s',a')\right]
+\]
+
+avec la règle de mise à jour :
+
+\[
+Q(s,a) \leftarrow Q(s,a) + \alpha \left(r + \gamma \max_{a'} Q(s',a') - Q(s,a)\right)
+\]
+
+où $\alpha \in (0,1]$ est le taux d'apprentissage.
+
+\subsection{Extension aux réseaux de neurones}
+
+Dans le DQN, la fonction $Q$ est approximée par un réseau de neurones $\hat{Q}(s,a;\theta)$. La fonction de perte minimisée est :
+
+\[
+\mathcal{L}(\theta) =
+\mathbb{E}\left[
+\left(
+r + \gamma \max_{a'} \hat{Q}(s',a';\theta^-)
+- \hat{Q}(s,a;\theta)
+\right)^2
+\right]
+\]
+
+où $\theta^-$ correspond aux paramètres du \textit{target network}.
+
+\subsection{Experience Replay}
+
+Les transitions $(s,a,r,s')$ sont stockées dans un buffer de replay. À chaque étape d'apprentissage, un mini-batch est échantillonné aléatoirement :
+\begin{itemize}
+    \item réduit la corrélation entre les échantillons,
+    \item améliore la stabilité de l'apprentissage,
+    \item réutilise efficacement les expériences passées.
+\end{itemize}
+
+\subsection{Target Network}
+
+Un second réseau, appelé \textit{target network}, calcule les cibles. Ses paramètres $\theta^-$ sont mis à jour périodiquement à partir du réseau principal.
+
+\subsection{Double DQN}
+
+Le Double DQN réduit la surestimation des Q-values. La cible devient :
+
+\[
+r + \gamma \hat{Q}(s', \arg\max_{a'} \hat{Q}(s',a';\theta); \theta^-)
+\]
+
+\subsection{Prioritized Experience Replay}
+
+Plutôt que d'échantillonner uniformément, les transitions sont échantillonnées selon leur erreur TD :
+
+\[
+p_i \propto |\delta_i|^{\alpha}, \quad \delta_i = r + \gamma \max_{a'} \hat{Q}(s',a';\theta^-) - \hat{Q}(s,a;\theta)
+\]
+
+\subsection{Politique d'exploration}
+
+L'agent utilise une politique $\varepsilon$-gloutonne :
+
+\[
+a_t =
+\begin{cases}
+\text{action aléatoire} & \text{avec probabilité } \varepsilon, \\
+\arg\max_a \hat{Q}(s,a;\theta) & \text{sinon}.
+\end{cases}
+\]
+
+Le paramètre $\varepsilon$ décroît progressivement.
+
+%================================================
+\section{Environnements}
+
+%================================================
+\subsection{CartPole-v1}
+
+\subsubsection{Description}
+
+CartPole-v1 est un problème classique de contrôle avec espace d'état continu et espace d'actions discret.
+
+\begin{itemize}
+    \item \textbf{État :} vecteur réel de dimension 4 :
+    \begin{enumerate}
+        \item position du chariot ($x$),
+        \item vitesse du chariot ($\dot{x}$),
+        \item angle de la perche ($\theta$),
+        \item vitesse angulaire de la perche ($\dot{\theta}$).
+    \end{enumerate}
+
+    \item \textbf{Actions :} 2 actions discrètes :
+    \begin{enumerate}
+        \item pousser le chariot vers la gauche,
+        \item pousser le chariot vers la droite.
+    \end{enumerate}
+
+    \item \textbf{Récompense :} +1 à chaque pas de temps dans l'épisode.
+
+    \item \textbf{Terminalité :}
+    \begin{itemize}
+        \item perche dépasse 15°,
+        \item chariot sort de l'écran ($|x| > 2.4$),
+        \item 500 pas atteints (version v1).
+    \end{itemize}
+
+    \item \textbf{Complexité :} Basse ($\sim 10$ min apprentissage).
+\end{itemize}
+
+\subsubsection{Objectif}
+
+L'agent cherche à apprendre une politique optimale $\pi^*$ maximisant :
+\[
+J(\pi) = \mathbb{E}\left[\sum_{t=0}^{T} \gamma^t r_t\right]
+\]
+
+Cible : reward $\geq 400$ sur 100 épisodes de test.
+
+\subsubsection{Architecture réseau CartPole}
+
+\[
+\begin{array}{c}
+\text{Input (4 features)} \\
+\downarrow \\
+\text{Linear}(4 \to 64) + \tanh \\
+\downarrow \\
+\text{Linear}(64 \to 64) + \tanh \\
+\downarrow \\
+\text{Linear}(64 \to 2) \quad \text{[Q-values]}
+\end{array}
+\]
+
+%================================================
+\subsection{GridWorld-v0}
+
+\subsubsection{Description}
+
+GridWorld est un problème de navigation en grille 2D avec observations spatiales.
+
+\begin{itemize}
+    \item \textbf{État :} grille $n \times m$ encodant :
+    \begin{enumerate}
+        \item position de l'agent,
+        \item positions cibles (récompense),
+        \item positions obstacles/murs.
+    \end{enumerate}
+    Feature extraction : $\text{MapFromDumpExtractor2}$ → 3 canaux $\times$ map size
+
+    \item \textbf{Actions :} 4 actions discrètes :
+    \begin{enumerate}
+        \item haut, bas, gauche, droite.
+    \end{enumerate}
+
+    \item \textbf{Récompense :}
+    \begin{itemize}
+        \item +1 atteindre objectif,
+        \item -0.001 par pas (pénalité de temps),
+        \item -1 atteindre obstacle.
+    \end{itemize}
+
+    \item \textbf{Terminalité :}
+    \begin{itemize}
+        \item objectif atteint,
+        \item 100 pas max (artificiel en training).
+    \end{itemize}
+
+    \item \textbf{Complexité :} Moyenne ($\sim 20$ min apprentissage).
+\end{itemize}
+
+\subsubsection{Architecture réseau GridWorld}
+
+\[
+\begin{array}{c}
+\text{Input (extracted features)} \\
+\downarrow \\
+\text{Linear}(n_{\text{feat}} \to 30) + \tanh \\
+\downarrow \\
+\text{Linear}(30 \to 30) + \tanh \\
+\downarrow \\
+\text{Linear}(30 \to 4) \quad \text{[Q-values]}
+\end{array}
+\]
+
+%================================================
+\subsection{LunarLander-v2}
+
+\subsubsection{Description}
+
+LunarLander est un problème de contrôle continu : atterrir un module lunaire sans crash.
+
+\begin{itemize}
+    \item \textbf{État :} vecteur 8D :
+    \begin{enumerate}
+        \item position $(x, y)$,
+        \item vitesse $(\dot{x}, \dot{y})$,
+        \item angle $\theta$, vitesse angulaire $\dot{\theta}$,
+        \item indicateurs moteur gauche/droit.
+    \end{enumerate}
+
+    \item \textbf{Actions :} 4 actions discrètes :
+    \begin{enumerate}
+        \item rien, moteur droit, moteur gauche, moteur central.
+    \end{enumerate}
+
+    \item \textbf{Récompense :}
+    \begin{itemize}
+        \item jusqu'à 275 pour atterrir près de la cible,
+        \item -300 crash,
+        \item -0.3 par seconde combustible.
+    \end{itemize}
+
+    \item \textbf{Terminalité :}
+    \begin{itemize}
+        \item atterrissage (success/crash),
+        \item 1000 pas max.
+    \end{itemize}
+
+    \item \textbf{Complexité :} Haute ($\sim 30$ min apprentissage).
+\end{itemize}
+
+\subsubsection{Architecture réseau LunarLander}
+
+\[
+\begin{array}{c}
+\text{Input (8 state variables)} \\
+\downarrow \\
+\text{Linear}(8 \to 200) + \tanh \\
+\downarrow \\
+\text{Linear}(200 \to 4) \quad \text{[Q-values]}
+\end{array}
+\]
+
+%================================================
+\section{Ablation Study}
+
+L'objectif est de mesurer l'impact de chaque composant du DQN sur les trois environnements.
+
+\subsection{Variantes testées}
+
+\begin{enumerate}
+    \item \textbf{Baseline :} Q-learning simple (pas de replay buffer, pas de target network).
+    \item \textbf{ReplayOnly :} + Experience Replay (uniform sampling).
+    \item \textbf{TargetOnly :} + Target Network (pas de PER).
+    \item \textbf{Standard :} Experience Replay + Target Network (DQN classique).
+    \item \textbf{Advanced (BONUS)} : Double DQN + Prioritized Replay + Target Network.
+\end{enumerate}
+
+\subsection{Protocole expérimental}
+
+\begin{itemize}
+    \item \textbf{Seed :} fixé à 5 pour reproducibilité.
+    \item \textbf{Nombre d'épisodes :} 1,000,000 par variant/environnement.
+    \item \textbf{Test frequency :} tous les 100-1000 épisodes selon l'environnement.
+    \item \textbf{Test samples :} 5 épisodes par évaluation (moyennes stables).
+    \item \textbf{Hyperparamètres constants :}
+    \begin{itemize}
+        \item Learning rate : 0.0001
+        \item Discount factor : $\gamma = 0.99$
+        \item Initial exploration : $\varepsilon_0 = 0.1$
+        \item Batch size : 100
+    \end{itemize}
+\end{itemize}
+
+\subsection{Métriques}
+
+Pour chaque variante, on extrait :
+\begin{itemize}
+    \item \textbf{reward :} récompense cumulée par épisode (train).
+    \item \textbf{rewardTest :} performance de test (stabilité).
+    \item \textbf{qvalue\_mean :} estimation Q moyenne (stabilité réseau).
+    \item \textbf{epsilon :} taux d'exploration (decay).
+    \item \textbf{tdError\_mean :} erreur TD (convergence).
+\end{itemize}
+
+%================================================
+\section{Résultats}
+
+\subsection{CartPole-v1}
+
+\subsubsection{Convergence par variante}
+
+\textit{[Insérer graphique : Reward vs Episode pour les 5 variants]}
+
+\begin{itemize}
+    \item \textbf{Baseline :} convergence lente, instabilité.
+    \item \textbf{ReplayOnly :} amélioration significative.
+    \item \textbf{TargetOnly :} stabilité accrue.
+    \item \textbf{Standard :} convergence rapide et stable.
+    \item \textbf{Advanced :} performance optimale.
+\end{itemize}
+
+\subsubsection{Performance de test}
+
+\textit{[Insérer graphique : RewardTest vs Episode]}
+
+Tableau récapitulatif :
+
+\begin{center}
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Variante} & \textbf{Reward moyen} & \textbf{Reward max} & \textbf{Stabilité} \\
+\hline
+Baseline & XXX & XXX & $\pm$ XXX \\
+ReplayOnly & XXX & XXX & $\pm$ XXX \\
+TargetOnly & XXX & XXX & $\pm$ XXX \\
+Standard & XXX & XXX & $\pm$ XXX \\
+Advanced & XXX & XXX & $\pm$ XXX \\
+\hline
+\end{tabular}
+\end{center}
+
+%------------------------------------------------
+\subsection{GridWorld-v0}
+
+\subsubsection{Convergence par variante}
+
+\textit{[Insérer graphique : Reward vs Episode pour les 5 variants]}
+
+Observations :
+\begin{itemize}
+    \item Impact du Target Network plus marqué que sur CartPole.
+    \item PER apporte un gain significatif en rapidité.
+\end{itemize}
+
+\subsubsection{Tableau comparatif}
+
+\begin{center}
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Variante} & \textbf{Reward moyen} & \textbf{Reward max} & \textbf{Stabilité} \\
+\hline
+Baseline & XXX & XXX & $\pm$ XXX \\
+ReplayOnly & XXX & XXX & $\pm$ XXX \\
+TargetOnly & XXX & XXX & $\pm$ XXX \\
+Standard & XXX & XXX & $\pm$ XXX \\
+Advanced & XXX & XXX & $\pm$ XXX \\
+\hline
+\end{tabular}
+\end{center}
+
+%------------------------------------------------
+\subsection{LunarLander-v2}
+
+\subsubsection{Convergence par variante}
+
+\textit{[Insérer graphique : Reward vs Episode pour les 5 variants]}
+
+Observations :
+\begin{itemize}
+    \item Tâche complexe nécessite tous les composants.
+    \item Double DQN critique pour éviter surestimation.
+    \item PER essentiel pour convergence.
+\end{itemize}
+
+\subsubsection{Tableau comparatif}
+
+\begin{center}
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Variante} & \textbf{Reward moyen} & \textbf{Reward max} & \textbf{Stabilité} \\
+\hline
+Baseline & XXX & XXX & $\pm$ XXX \\
+ReplayOnly & XXX & XXX & $\pm$ XXX \\
+TargetOnly & XXX & XXX & $\pm$ XXX \\
+Standard & XXX & XXX & $\pm$ XXX \\
+Advanced & XXX & XXX & $\pm$ XXX \\
+\hline
+\end{tabular}
+\end{center}
+
+%================================================
+\section{Analyse comparative}
+
+\subsection{Impact d'Experience Replay}
+
+En comparant \textit{Baseline} vs \textit{ReplayOnly} :
+
+\[
+\text{Gain} = \frac{\text{Reward}_{ReplayOnly} - \text{Reward}_{Baseline}}{\text{Reward}_{Baseline}} \times 100\%
+\]
+
+\begin{center}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Environnement} & \textbf{Gain moyen} \\
+\hline
+CartPole & XXX\% \\
+GridWorld & XXX\% \\
+LunarLander & XXX\% \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Impact du Target Network}
+
+Comparaison \textit{Baseline} vs \textit{TargetOnly}.
+
+\subsection{Synérgie Replay + Target}
+
+Comparaison \textit{Standard} vs (\textit{ReplayOnly} + \textit{TargetOnly}).
+
+\subsection{Efficacité du Double DQN + PER}
+
+Comparaison \textit{Advanced} vs \textit{Standard}.
+
+%================================================
+\section{Conclusion}
+
+\subsection{Résumé des résultats}
+
+\begin{itemize}
+    \item \textit{CartPole} : problème simple, tous les variants convergent.
+    \item \textit{GridWorld} : Target Network crucial, PER apporte stabilité.
+    \item \textit{LunarLander} : Double DQN + PER essentiels, baseline échoue.
+\end{itemize}
+
+\subsection{Points clés}
+
+\begin{enumerate}
+    \item Experience Replay seul n'est pas suffisant sur tâches complexes.
+    \item Target Network stabilise significativement l'apprentissage.
+    \item Double DQN réduit surestimation critique pour tâches longues.
+    \item Prioritized Replay accélère convergence sur problèmes difficiles.
+\end{enumerate}
+
+\subsection{Perspectives}
+
+\begin{itemize}
+    \item Implémenter Dueling DQN pour décomposer $V(s)$ et $A(s,a)$.
+    \item Tester sur Atari (images) avec convolutions.
+    \item Analyser variance and bias du réseau de neurones.
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,39 @@
+env: gridworld-v0
+map: data/gridworldPlans/plan1.txt
+rewards:
+  0: -0.001
+  3: 1
+  4: 1
+  5: -1
+  6: -1
+seed: 5
+featExtractor: !!python/name:__main__.MapFromDumpExtractor2 ''
+freqSave: 1000
+freqTest: 1000
+nbTest: 5
+freqVerbose: 100
+verboseFirst: false
+fromFile: null
+nbEpisodes: 100000
+explo: 0.1
+gamma: 0.99
+edecay: 0.9999
+device: -1
+doubleQ: false
+batchsize: 100
+capacity: 10000
+lr: 0.0001
+layers:
+- 30
+- 30
+conv:
+  - !!python/tuple [3,8,3,1]
+freqOptim: 1
+ctarget: 1000
+optimizer: !!python/name:torch.optim.Adam ''
+prioritizedReplay: false
+vloss: !!python/name:torch.nn.SmoothL1Loss ''
+maxLengthTest: 500
+maxLengthTrain: 100
+execute: |
+    env.setPlan(config["map"], config["rewards"])

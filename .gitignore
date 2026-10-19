@@ -42,12 +42,13 @@ dist/
 *.docx
 *.pptx
 
-# Misc
+# Data, generated outputs, and personal media are excluded globally to prevent
+# accidental publication. Review provenance and privacy before force-adding any.
 .DS_Store
 Thumbs.db
 *.csv
 *.jpeg
-*.jpg   
+*.jpg
 *.png
 *.pkl
 *.zip
@@ -66,6 +67,9 @@ instance/
 *.sqlite
 *.sqlite3
 *.db
+# Local Flask topics and request logs
+Flask/Projet Flask/data_base.json
+Flask/Projet Flask/client_logs.txt
 
 # ML artefacts / data
 mlruns/
@@ -77,8 +81,7 @@ catboost_info/
 *.parquet
 *.xlsx
 *.nc
-# Licences
-LICENSE*
+Reinforcement Learning/XP/
 
 # README prive
 Candidatures/README.md

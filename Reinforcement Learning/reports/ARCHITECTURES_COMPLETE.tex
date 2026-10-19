@@ -1,0 +1,308 @@
+\section{Architecture des Réseaux de Neurones}
+
+Nous utilisons une approche uniforme mais adaptée à la complexité de chaque environnement.
+Tous les réseaux (main et target) utilisent la même architecture, avec des poids initialisés indépendamment
+pour le target network.
+
+\subsection{CartPole-v1}
+
+\textbf{Environnement:} Équilibre d'une barre sur un chariot mobile. \\
+\textbf{Espace d'état:} $\mathbb{R}^4$ (position du chariot, sa vitesse, angle du pole, vitesse angulaire) \\
+\textbf{Espace d'action:} 2 actions discrètes (pousser à gauche/droite) \\
+\textbf{Récompense:} +1 par step où le pole reste en équilibre \\
+
+\textbf{Architecture du réseau:}
+\[
+\begin{aligned}
+Q_\theta : \mathbb{R}^4 &\to \mathbb{R}^2 \\
+s = [x, \dot{x}, \theta, \dot{\theta}] &\to [Q(s, a_0), Q(s, a_1)]
+\end{aligned}
+\]
+
+\vspace{0.3cm}
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+    \hline
+    \textbf{Couche} & \textbf{Entrée} & \textbf{Sortie} & \textbf{Activation} \\
+    \hline
+    Input & - & 4 & - \\
+    \hline
+    Dense & 4 & 200 & $\tanh$ \\
+    \hline
+    Output & 200 & 2 & Linéaire \\
+    \hline
+    \end{tabular}
+    \caption{Architecture du réseau Q pour CartPole-v1}
+\end{table}
+
+\textbf{Hyperparamètres:}
+\begin{itemize}
+    \item Learning rate: $\alpha = 0.0003$
+    \item Discount factor: $\gamma = 0.999$
+    \item Target update frequency: $C = 1000$ (ou jamais pour Baseline)
+    \item Replay buffer capacity: $10,000$ transitions
+    \item Batch size: $100$
+    \item Exploration rate: $\epsilon = 0.1$ (initial), decay $0.99999$ per episode
+\end{itemize}
+
+---
+
+\subsection{GridWorld-v0}
+
+\textbf{Environnement:} Navigation dans une grille avec obstacles, récompenses et pénalités. \\
+\textbf{Espace d'état:} Grille (13×13 par défaut) avec 6 types de cellules:
+\begin{itemize}
+    \item 2: Agent (joueur actuel)
+    \item 4: Goal (récompense +1)
+    \item 6: Pit (pénalité -1)
+    \item autres: obstacles et vide
+\end{itemize}
+
+\textbf{Espace d'action:} 4 actions discrètes (haut, bas, gauche, droite) \\
+\textbf{Feature extraction:} $\text{MapFromDumpExtractor2}$ - représentation 3-canaux:
+\begin{itemize}
+    \item Canal 0: Position agent (binaire)
+    \item Canal 1: Positions récompenses (binaire)
+    \item Canal 2: Positions pénalités (binaire)
+\end{itemize}
+
+Feature vector flattened: $3 \times 13 \times 13 = 507 \to 75$ (après reduction)
+
+\textbf{Architecture du réseau:}
+\[
+\begin{aligned}
+Q_\theta : \mathbb{R}^{75} &\to \mathbb{R}^4 \\
+s = [\text{agent\_position}, \text{goals}, \text{pits}] &\to [Q(s, a_0), Q(s, a_1), Q(s, a_2), Q(s, a_3)]
+\end{aligned}
+\]
+
+\vspace{0.3cm}
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+    \hline
+    \textbf{Couche} & \textbf{Entrée} & \textbf{Sortie} & \textbf{Activation} \\
+    \hline
+    Input & - & 75 & - \\
+    \hline
+    Dense 1 & 75 & 30 & $\tanh$ \\
+    \hline
+    Dense 2 & 30 & 30 & $\tanh$ \\
+    \hline
+    Output & 30 & 4 & Linéaire \\
+    \hline
+    \end{tabular}
+    \caption{Architecture du réseau Q pour GridWorld-v0}
+\end{table}
+
+\textbf{Hyperparamètres:}
+\begin{itemize}
+    \item Learning rate: $\alpha = 0.0001$
+    \item Discount factor: $\gamma = 0.99$
+    \item Target update frequency: $C = 1000$
+    \item Replay buffer capacity: $10,000$ transitions
+    \item Batch size: $100$
+    \item Test frequency: tous les 1000 épisodes
+    \item Exploration rate: $\epsilon = 0.1$, decay $0.9999$ per episode
+\end{itemize}
+
+---
+
+\subsection{LunarLander-v2}
+
+\textbf{Environnement:} Atterrissage lunaire avec contrôle de carburant limité. \\
+\textbf{Espace d'état:} $\mathbb{R}^8$
+\begin{itemize}
+    \item $x, y$: Position du module (dans $[-1.5, 1.5]$)
+    \item $\dot{x}, \dot{y}$: Vitesses
+    \item $\theta, \dot{\theta}$: Angle et vitesse angulaire
+    \item Leg1, Leg2: Contact avec le sol (0 ou 1)
+\end{itemize}
+
+\textbf{Espace d'action:} 4 actions discrètes (inaction, moteur gauche, moteur droit, moteur principal) \\
+\textbf{Récompense:} Complexe - récompense pour l'atterrissage réussi, pénalité pour le carburant et les crashes \\
+
+\textbf{Architecture du réseau:}
+\[
+\begin{aligned}
+Q_\theta : \mathbb{R}^8 &\to \mathbb{R}^4 \\
+s = [x, y, \dot{x}, \dot{y}, \theta, \dot{\theta}, L_1, L_2] &\to [Q(s, a_0), Q(s, a_1), Q(s, a_2), Q(s, a_3)]
+\end{aligned}
+\]
+
+\vspace{0.3cm}
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+    \hline
+    \textbf{Couche} & \textbf{Entrée} & \textbf{Sortie} & \textbf{Activation} \\
+    \hline
+    Input & - & 8 & - \\
+    \hline
+    Dense & 8 & 200 & $\tanh$ \\
+    \hline
+    Output & 200 & 4 & Linéaire \\
+    \hline
+    \end{tabular}
+    \caption{Architecture du réseau Q pour LunarLander-v2}
+\end{table}
+
+\textbf{Hyperparamètres:}
+\begin{itemize}
+    \item Learning rate: $\alpha = 0.0001$
+    \item Discount factor: $\gamma = 0.99$
+    \item Target update frequency: $C = 1000$
+    \item Replay buffer capacity: $100,000$ transitions (plus grand pour l'exploration)
+    \item Batch size: $100$
+    \item Test frequency: tous les 100 épisodes
+    \item Max episode length: 300 steps (training), 1000 steps (testing)
+    \item Exploration rate: $\epsilon = 0.1$, decay $0.99999$ per episode
+\end{itemize}
+
+---
+
+\section{Variantes DQN et Améliorations}
+
+\subsection{Baseline: Q-Learning Simple}
+
+\textbf{Désactivations:}
+\begin{itemize}
+    \item ❌ Experience Replay: Désactivé
+    \item ❌ Target Network: Jamais mis à jour ($C = \infty$)
+\end{itemize}
+
+\textbf{Mise à jour:} Le réseau main est mis à jour directement sans buffer ni target:
+\[
+Q_\theta(s,a) \leftarrow Q_\theta(s,a) + \alpha [r + \gamma \max_{a'} Q_\theta(s', a') - Q_\theta(s,a)]
+\]
+
+\textbf{Caractéristiques:} Instable, oscille fortement, convergence lente.
+
+---
+
+\subsection{Variante 1: Experience Replay (Uniform)}
+
+\textbf{Améliorations par rapport au Baseline:}
+\begin{itemize}
+    \item ✅ Experience Replay activé (buffer uniforme)
+    \item ❌ Target Network: Toujours désactivé
+\end{itemize}
+
+\textbf{Effet:} Décorrélation des données, apprentissage plus stable.
+
+\textbf{Mise à jour:}
+\[
+\mathcal{L}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}
+\left[ (r + \gamma \max_{a'} Q_\theta(s', a') - Q_\theta(s,a))^2 \right]
+\]
+
+---
+
+\subsection{Variante 2: Target Network Seul}
+
+\textbf{Améliorations:}
+\begin{itemize}
+    \item ❌ Experience Replay: Toujours désactivé
+    \item ✅ Target Network: Mis à jour tous les $C=1000$ events
+\end{itemize}
+
+\textbf{Effet:} Stabilisation de la cible TD, mais données toujours corrélées.
+
+\textbf{Mise à jour:}
+\[
+Q_\theta(s,a) \leftarrow Q_\theta(s,a) + \alpha [r + \gamma \max_{a'} Q_{\theta^-}(s', a') - Q_\theta(s,a)]
+\]
+
+où $\theta^- = \theta$ tous les $C$ events.
+
+---
+
+\subsection{Variante 3: Standard DQN (Replay + Target Network)}
+
+\textbf{Améliorations:}
+\begin{itemize}
+    \item ✅ Experience Replay: Actif (buffer uniforme)
+    \item ✅ Target Network: Mis à jour périodiquement
+\end{itemize}
+
+\textbf{Mise à jour TD complète avec Huber Loss:}
+\[
+\mathcal{L}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}
+\left[ \ell_{\text{Huber}}(r + \gamma \max_{a'} Q_{\theta^-}(s', a') - Q_\theta(s,a)) \right]
+\]
+
+où $\ell_{\text{Huber}}(u) = \begin{cases} \frac{u^2}{2} & \text{if } |u| \leq 1 \\ |u| - \frac{1}{2} & \text{otherwise} \end{cases}$
+
+\textbf{Avantages:} Robustesse contre les outliers, convergence stable.
+
+---
+
+\subsection{Variante Bonus: Double DQN + Prioritized Replay}
+
+\textbf{Améliorations avancées:}
+\begin{itemize}
+    \item ✅ Double DQN: Sélection et évaluation d'actions découplées
+    \item ✅ Prioritized Experience Replay: Basée sur l'erreur TD
+\end{itemize}
+
+\subsubsection{Double DQN}
+
+\textbf{Problème résolu:} Surestimation du Q-values (overestimation bias).
+
+\textbf{Mise à jour:}
+\[
+Q_\theta(s,a) \leftarrow Q_\theta(s,a) + \alpha \left[ r + \gamma Q_{\theta^-}(s', \argmax_{a'} Q_\theta(s', a')) - Q_\theta(s,a) \right]
+\]
+
+L'action suivante est sélectionnée par le \textbf{main network} $Q_\theta$,
+mais évaluée par le \textbf{target network} $Q_{\theta^-}$.
+
+\subsubsection{Prioritized Experience Replay (PER)}
+
+\textbf{Principe:} Échantillonner les transitions avec probabilité proportionnelle à leur TD-error.
+
+\textbf{Mise à jour de priorité:}
+\[
+p_i = (|\delta_i| + \epsilon)^\alpha
+\]
+
+où $\delta_i = r_i + \gamma \max_{a'} Q_{\theta^-}(s'_i, a') - Q_\theta(s_i, a_i)$ est l'erreur TD,
+$\alpha$ contrôle la distribution ($ \alpha=0.6$ typique), et $\epsilon > 0$ évite les priorités nulles.
+
+\textbf{Importance Sampling (IS):} Correction des poids:
+\[
+w_i = \left(\frac{1}{N} \cdot \frac{1}{p_i}\right)^\beta
+\]
+
+où $\beta$ augmente graduellement de 0 à 1 pour dégradé la correction IS au fil du temps.
+
+\textbf{Avantages:}
+\begin{itemize}
+    \item Apprentissage plus efficace (focus sur les transitions difficiles)
+    \item Convergence plus rapide
+    \item Performance supérieure en général
+\end{itemize}
+
+---
+
+\section{Protocole d'Ablation Study}
+
+Pour évaluer l'impact de chaque composante DQN, nous comparons les 5 variantes sur les 3 environnements.
+
+\textbf{Métriques collectées:}
+\begin{itemize}
+    \item \textbf{reward}: Récompense cumulative par épisode d'entraînement
+    \item \textbf{rewardTest}: Score moyen sur 5 épisodes de test (sans exploration)
+    \item \textbf{qvalue\_mean}: Moyenne des Q-values à chaque put à jour
+    \item \textbf{epsilon}: Taux d'exploration décroissant
+    \item \textbf{tdError\_mean}: Erreur TD moyenne
+\end{itemize}
+
+\textbf{Configuration:}
+\begin{itemize}
+    \item Episodes d'entraînement: 100,000 par variante
+    \item Test frequency: Tous les 100 (CartPole/LunarLander) ou 1000 (GridWorld) épisodes
+    \item Seed: Fixe (5) pour reproductibilité
+    \item Total d'épisodes par environnement: $5 \text{ variantes} \times 100,000 \text{ episodes} = 500,000$
+\end{itemize}

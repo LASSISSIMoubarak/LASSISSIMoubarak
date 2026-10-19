@@ -1,0 +1,7 @@
+gymnasium[box2d,classic-control]
+matplotlib
+numpy
+PyYAML
+six
+tensorboard
+torch

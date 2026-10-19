@@ -1,0 +1,283 @@
+\subsection{CartPole}
+
+CartPole est un problème classique de contrôle avec espace d'état continu et espace d'actions discret.
+
+\begin{itemize}
+    \item[] \textbf{État :} vecteur réel de dimension 4 :
+    \begin{enumerate}
+        \item position du chariot ($x$),
+        \item vitesse du chariot ($\dot{x}$),
+        \item angle de la perche ($\theta$),
+        \item vitesse angulaire de la perche ($\dot{\theta}$).
+    \end{enumerate}
+
+    \item[] \textbf{Actions :} deux actions discrètes :
+    \begin{enumerate}
+        \item pousser le chariot vers la gauche,
+        \item pousser le chariot vers la droite.
+    \end{enumerate}
+
+    \item[] \textbf{Récompense :} +1 à chaque pas de temps tant que l'épisode n'est pas terminé.
+
+    \item[] \textbf{Terminalité :} l'épisode s'arrête si :
+    \begin{itemize}
+        \item[] la perche dépasse 15°,
+        \item[] le chariot sort de l'écran,
+        \item[] 500 pas de temps sont atteints (version v1).
+    \end{itemize}
+\end{itemize}
+
+%-----------------------------------------
+\subsubsection{Objectif}
+
+L'agent cherche à apprendre une politique optimale $\pi^*$ maximisant l'espérance de la récompense cumulée :
+
+\[
+J(\pi) = \mathbb{E}\left[\sum_{t=0}^{T} \gamma^t r_t\right]
+\]
+
+où $\gamma \in [0,1]$ est le facteur d'actualisation et $r_t$ la récompense reçue à l'instant $t$.
+
+\textbf{Le Q-learning} vise à estimer la fonction valeur-action :
+
+\[
+Q(s,a) = \mathbb{E}\left[r + \gamma \max_{a'} Q(s',a')\right]
+\]
+
+avec la règle de mise à jour :
+
+\[
+Q(s,a) \leftarrow Q(s,a) + \alpha \left(r + \gamma \max_{a'} Q(s',a') - Q(s,a)\right)
+\]
+
+où $\alpha \in (0,1]$ est le taux d'apprentissage contrôlant l'influence
+de la nouvelle estimation sur la valeur précédente.
+
+\textbf{Dans le DQN}, la fonction $Q$ est approximée par un réseau de neurones $\hat{Q}(s,a;\theta)$. La fonction de perte minimisée est :
+
+\[
+\mathcal{L}(\theta) =
+\mathbb{E}\left[
+\left(
+r + \gamma \max_{a'} \hat{Q}(s',a';\theta^-)
+- \hat{Q}(s,a;\theta)
+\right)^2
+\right]
+\]
+
+où $\theta^-$ correspond aux paramètres du \textit{target network}.
+
+%-----------------------------------------
+\subsubsection{Experience Replay}
+
+Les transitions $(s,a,r,s')$ sont stockées dans un buffer de replay. À chaque étape d'apprentissage, un mini-batch est échantillonné aléatoirement, ce qui permet :
+\begin{itemize}
+    \item de réduire la corrélation entre les échantillons,
+    \item d'améliorer la stabilité de l'apprentissage,
+    \item de réutiliser efficacement les expériences passées.
+\end{itemize}
+
+\subsubsection{Target Network}
+
+Un second réseau, appelé \textit{target network}, est utilisé pour calculer les cibles. Ses paramètres $\theta^-$ sont mis à jour périodiquement à partir du réseau principal afin de stabiliser l'apprentissage.
+
+%-----------------------------------------
+\subsubsection{Stratégie d'Exploration}
+
+L'agent utilise une politique $\varepsilon$-gloutonne définie par :
+
+\[
+a_t =
+\begin{cases}
+\text{action aléatoire} & \text{avec probabilité } \varepsilon, \\
+\arg\max_a Q(s,a) & \text{sinon}.
+\end{cases}
+\]
+
+Le paramètre $\varepsilon$ décroît progressivement au cours de l'entraînement selon :
+
+\[
+\varepsilon_t = \varepsilon_{\min} + (\varepsilon_0 - \varepsilon_{\min}) \cdot \text{decay}^t
+\]
+
+%-----------------------------------------
+\subsubsection{Architecture du Réseau de Neurones}
+
+Le réseau $\hat{Q}(s,a;\theta)$ est un perceptron multicouche (MLP) avec l'architecture suivante :
+
+\[
+\text{État} \xrightarrow{4 \text{ inputs}} \text{Couche cachée} \xrightarrow{\textbf{200 neurones}} \text{Q-values} \xrightarrow{2 \text{ outputs}}
+\]
+
+\textbf{Architecture implémentée :}
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|l|c|c|c|}
+    \hline
+    \textbf{Couche} & \textbf{Entrée} & \textbf{Sortie} & \textbf{Activation} \\
+    \hline
+    Input (État) & - & 4 & - \\
+    \hline
+    \textbf{Dense (Cachée)} & \textbf{4} & \textbf{200} & \textbf{$\tanh$} \\
+    \hline
+    Output (Q-values) & 200 & 2 & Linéaire \\
+    \hline
+    \end{tabular}
+    \caption{Architecture du réseau Q pour CartPole-v1 : les \textbf{200 neurones} de la couche cachée}
+\end{table}
+
+\textbf{Justification :} La couche cachée contient \textbf{200 neurones} avec activation $\tanh$. Cette architecture (4 $\to$ 200 $\to$ 2) est suffisante pour ce problème relativement simple. Les 200 neurones introduisent une non-linéarité complexe permettant au réseau d'approcher les fonctions Q optimales. Le choix de 200 est un équilibre entre capacité d'approximation et stabilité de convergence.
+
+%-----------------------------------------
+\subsubsection{Hyperparamètres de l'Entraînement}
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|l|c|l|}
+    \hline
+    \textbf{Paramètre} & \textbf{Valeur} & \textbf{Justification} \\
+    \hline
+    Learning rate ($\alpha$) & $0.0003$ & Convergence stable, sans divergence \\
+    \hline
+    Discount factor ($\gamma$) & $0.999$ & Horizon long, récompenses futures importantes \\
+    \hline
+    Initial $\varepsilon$ & $0.1$ & 10\% d'exploration aléatoire \\
+    \hline
+    $\varepsilon$ decay & $0.99999$ & Décroissance très lente et progressive \\
+    \hline
+    Minimum $\varepsilon$ & $0.01$ & 1\% minimum pour exploration \\
+    \hline
+    Replay buffer capacity & $10,000$ & Stockage efficace sans explosion mémoire \\
+    \hline
+    Batch size & $100$ & Mini-batch standard, bon compromis variance/biais \\
+    \hline
+    Target update frequency ($C$) & $1000$ (ou $\infty$) & Mise à jour toutes les 1000 transitions (Baseline: jamais) \\
+    \hline
+    Update frequency & $10$ transitions & Apprentissage à chaque 10ème transition \\
+    \hline
+    Optimizer & Adam & Adaptif, bon pour le deep RL \\
+    \hline
+    Loss function & Huber (SmoothL1Loss) & Robustesse contre les outliers \\
+    \hline
+    Total training episodes & $100,000$ & Complet, convergence possible \\
+    \hline
+    Max episode length (train) & $300$ & Limite technique pour CartPole \\
+    \hline
+    Max episode length (test) & $500$ & Évaluation complète jusqu'à 500 steps \\
+    \hline
+    Test frequency & Tous les 100 épisodes & Suivi régulier sans overhead \\
+    \hline
+    Number of test runs & 5 & Moyenne lissée, réduction variance \\
+    \hline
+    Random seed & 5 & Reproductibilité \\
+    \hline
+    \end{tabular}
+    \caption{Hyperparamètres CartPole}
+\end{table}
+
+%-----------------------------------------
+\subsubsection{Les 5 Variantes de l'Étude d'Ablation}
+
+Pour évaluer l'impact de chaque composante DQN, cinq variantes ont été entraînées et comparées :
+
+\paragraph{Variante 1: Baseline (Q-Learning simple)}
+
+Configuration de base sans aucune optimisation :
+\begin{itemize}
+    \item ❌ Experience Replay: Désactivé
+    \item ❌ Target Network: Désactivé (jamais mis à jour, $C = \infty$)
+\end{itemize}
+
+\textbf{Comportement attendu:} Instabilité, oscillations fortes, convergence lente due à la corrélation des données.
+
+\paragraph{Variante 2: ReplayOnly}
+
+Experience Replay activé avec buffer uniforme :
+\begin{itemize}
+    \item ✅ Experience Replay (uniform): Actif
+    \item ❌ Target Network: Désactivé
+\end{itemize}
+
+\textbf{Effet attendu:} Décorrélation des données, meilleure stabilité que Baseline.
+
+\paragraph{Variante 3: TargetOnly}
+
+Target Network seul sans replay buffer :
+\begin{itemize}
+    \item ❌ Experience Replay: Désactivé
+    \item ✅ Target Network: Mis à jour toutes les 1000 transitions
+\end{itemize}
+
+\textbf{Effet attendu:} Stabilisation partielle de la cible, mais données toujours corrélées.
+
+\paragraph{Variante 4: Standard DQN}
+
+DQN complet avec experience replay et target network :
+\begin{itemize}
+    \item ✅ Experience Replay: Actif
+    \item ✅ Target Network: Mis à jour périodiquement
+\end{itemize}
+
+\textbf{Effet attendu:} Meilleure convergence, apprentissage stable et efficace.
+
+\paragraph{Variante 5: Bonus (Double DQN + Prioritized Replay)}
+
+Améliorations avancées :
+\begin{itemize}
+    \item ✅ Double DQN: Sélection et évaluation d'actions découplées
+    \item ✅ Prioritized Replay: Échantillonnage basé sur l'erreur TD
+\end{itemize}
+
+\textbf{Effet attendu:} Apprentissage le plus efficace, convergence rapide, meilleure performance finale.
+
+%-----------------------------------------
+\subsubsection{Méthodologie de Comparaison}
+
+\textbf{Protocole d'exécution:}
+\begin{itemize}
+    \item Les 5 variantes sont entraînées séquentiellement
+    \item Chaque variante effectue 100,000 épisodes
+    \item Tous les 100 épisodes, 5 épisodes de test sont exécutés en mode non-exploratoire ($\varepsilon = 0$)
+    \item Les récompenses de test sont moyennées pour réduire la variance
+\end{itemize}
+
+\textbf{Métriques collectées:}
+\begin{itemize}
+    \item \textbf{reward}: Récompense cumulative par épisode d'entraînement
+    \item \textbf{rewardTest}: Moyenne des récompenses sur 5 épisodes de test
+    \item \textbf{qvalue\_mean}: Moyenne des Q-values estimées à chaque mise à jour
+    \item \textbf{epsilon}: Taux d'exploration décroissant
+    \item \textbf{buffer\_size}: Taille courante du replay buffer
+\end{itemize}
+
+%-----------------------------------------
+\subsubsection{Résultats Attendus}
+
+Les courbes d'apprentissage permettront de comparer :
+
+\begin{figure}[h!]
+    \centering
+    % À remplacer par vos courbes TensorBoard réelles
+    % \includegraphics[width=0.85\textwidth]{cartpole_reward_training.png}
+    \caption{Courbes d'entraînement (reward par épisode) pour les 5 variantes CartPole-v1}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    % À remplacer par vos courbes TensorBoard réelles
+    % \includegraphics[width=0.85\textwidth]{cartpole_reward_test.png}
+    \caption{Performance de test (rewardTest) pour les 5 variantes CartPole-v1}
+\end{figure}
+
+\textbf{Prédictions:}
+\begin{itemize}
+    \item \textbf{Baseline}: Convergence instable, plateau bas (reward $\approx 50-150$)
+    \item \textbf{ReplayOnly}: Nette amélioration sur Baseline (reward $\approx 200-400$)
+    \item \textbf{TargetOnly}: Amélioration modérée (reward $\approx 150-300$)
+    \item \textbf{Standard}: Convergence rapide et stable (reward $\approx 300-500$+)
+    \item \textbf{Bonus}: Performance optimale, convergence la plus rapide (reward $\approx 400-500$+)
+\end{itemize}
+
+L'analyse quantitative de ces courbes permettra de quantifier l'impact spécifique de chaque composante
+(experience replay, target network, double DQN, prioritized replay) sur la performance.

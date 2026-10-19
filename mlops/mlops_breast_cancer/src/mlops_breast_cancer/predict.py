@@ -1,22 +1,23 @@
 import argparse
-import os
+from pathlib import Path
 
 import joblib
-import pandas as pd
 
 from mlops_breast_cancer.data_utils import load_test_data
+
+MODEL_DIR = Path(__file__).resolve().parents[2] / "models"
 
 
 def predict_example(index: int = 0):
     # charger les données de puis data/
     X, y, target_names = load_test_data()
     # charger le modèle et le scaler
-    model_path = "models/logistic_regression_model.pkl"
-    scaler_path = "models/standard_scaler.pkl"
+    model_path = MODEL_DIR / "logistic_regression_model.pkl"
+    scaler_path = MODEL_DIR / "standard_scaler.pkl"
 
-    if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+    if not model_path.exists() or not scaler_path.exists():
         raise FileNotFoundError(
-            "Model or scaler not found in models/. Run train.py first."
+            f"Model or scaler not found in {MODEL_DIR}. Run train.py first."
         )
 
     model = joblib.load(model_path)

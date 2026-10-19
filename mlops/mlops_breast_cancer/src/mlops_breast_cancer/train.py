@@ -1,13 +1,14 @@
 import argparse
-import os
+from pathlib import Path
 
 import joblib
-import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import StandardScaler
 
 from mlops_breast_cancer.data_utils import load_test_data, load_train_data
+
+MODEL_DIR = Path(__file__).resolve().parents[2] / "models"
 
 
 def train_model(random_state: int):
@@ -31,10 +32,10 @@ def train_model(random_state: int):
     print(classification_report(y_test, y_pred, target_names=target_names))
 
     # sauvegarder le modèle et le scaler
-    os.makedirs("models", exist_ok=True)
-    joblib.dump(model, "models/logistic_regression_model.pkl")
-    joblib.dump(scaler, "models/standard_scaler.pkl")
-    print("Model and scaler saved to models/ directory.")
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, MODEL_DIR / "logistic_regression_model.pkl")
+    joblib.dump(scaler, MODEL_DIR / "standard_scaler.pkl")
+    print(f"Model and scaler saved to {MODEL_DIR}.")
 
 
 if __name__ == "__main__":

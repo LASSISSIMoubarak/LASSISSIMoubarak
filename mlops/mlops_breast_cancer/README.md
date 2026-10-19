@@ -1,76 +1,59 @@
-# Simple project example
+# MLOps - prédiction du cancer du sein
 
-A minimal Python project showing best practices.
+Petit pipeline reproductible de classification binaire avec le jeu de données
+Breast Cancer Wisconsin fourni par scikit-learn. Le projet sépare la préparation
+des données, l'entraînement et la prédiction d'un exemple.
 
-- `src/` layout
-- virtual environment
-- tests
+## Prérequis et installation
 
-## Development Installation
+Python 3.8 ou supérieur est requis. Depuis ce dossier, crée un environnement et
+installe les dépendances :
 
-1. **Create and activate a virtual environment**:
-
-```bash
-# Create the virtual environment
-python -m venv .venv
-
-# Activate it:
-# macOS/Linux
-source .venv/bin/activate
-# Windows
-.\.venv\Scripts\activate
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
-2. **Install the project in editable mode**:
+## Exécuter le pipeline
 
-```bash
-pip install -e .
+Les commandes sont indépendantes du répertoire courant grâce aux chemins
+résolus depuis le projet :
+
+```powershell
+python -m mlops_breast_cancer.data_utils
+python -m mlops_breast_cancer.train --random-state 42
+python -m mlops_breast_cancer.predict --index 0
 ```
 
-3. **Install testing dependencies** (if not already in requirements.txt):
+La préparation crée les partitions d'entraînement et de test dans `data/`.
+L'entraînement apprend un `StandardScaler` sur les seules données
+d'entraînement, ajuste une régression logistique et affiche le rapport de
+classification sur le jeu de test. Le modèle et le scaler sont écrits dans
+`models/`. La prédiction charge ces artefacts et affiche les classes et
+probabilités de l'exemple demandé.
 
-```bash
-pip install pytest
+Les fichiers CSV et modèles générés sont locaux et ignorés par Git. Les données
+peuvent être régénérées à partir du jeu intégré à scikit-learn ; aucun fichier
+de données téléchargé n'est nécessaire.
+
+## Tests
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest
 ```
 
-## Run Commands
+## Structure
 
-* **Run tests**:
-
-```bash
-pytest
+```text
+src/mlops_breast_cancer/  Préparation, entraînement et prédiction
+tests/                    Test de bout en bout du pipeline local
+data/                     Partitions générées (non versionnées)
+models/                   Modèle et scaler générés (non versionnés)
+pyproject.toml            Métadonnées et configuration de paquet
+requirements.txt          Dépendances d'exécution
+requirements-dev.txt      Dépendances de test
 ```
-
-* **Use the package in Python**:
-
-```python
-from mlops_breast_cancer.utils import mean
-
-res = mean([1, 3, 5])
-print(res)
-```
-
-## Project Structure
-
-```
-mlops_breast_cancer/
-│
-├── src/
-│   └── mlops_breast_cancer/
-│       ├── __init__.py
-│       └── utils.py
-│
-├── tests/
-│   └── test_utils.py
-│
-├── pyproject.toml
-├── README.md
-└── requirements.txt
-```
-
-## Resources
-
-* [Python Official Docs](https://python.org)
-* [Real Python Tutorials](https://realpython.com)
-* [Pytest Documentation](https://docs.pytest.org)
-* [Python Packaging User Guide](https://packaging.python.org/)

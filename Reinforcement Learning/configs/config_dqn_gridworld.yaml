@@ -1,0 +1,39 @@
+env: gridworld-v0                                                                      # nom de l'environnement
+map: data/gridworldPlans/plan1.txt                                                          # fichier carte de l'environnement à charger
+rewards:                                                                               # configuration des récompenses sur les différents types de cases
+  0: -0.001
+  3: 1
+  4: 1
+  5: -1
+  6: -1
+seed: 5                                                                                 # random seed
+featExtractor: !!python/name:__main__.MapFromDumpExtractor2 ''                          # Extracteur de features à partir des observations
+freqSave: 1000                                                                          # fréquence de sauvegarde
+freqTest: 1000                                                                          # fréquence d'épisodes de test (sans exploration)
+nbTest: 1                                                                               # nombre d'épisodes de tests à chaque session de test
+freqVerbose: 100                                                                       # Fréquence d'affichage de l'episode
+verboseFirst: false
+fromFile: null                                                                          # Si non null, chargement du modèle à partir du fichier spécifié
+nbEpisodes: 100000                                                                     # nombre d'épisodes total
+explo: 0.1                                                                              # coefficient d'exploration
+gamma: 0.99                                                                             # coefficient de discount
+edecay: 0.9999                                                                          # decay du coefficient d'exploration = explo <- explo * edecay à chaque étape
+device: -1                                                                              # si >=0, numéro de gpu, sinon cpu
+doubleQ: false                                                                          # si true => doubleDQN
+batchsize: 100                                                                          # taille de batch pour l'apprentissage de Q
+capacity: 10000                                                                         # capacité du replay buffer en nombre de transitions
+lr: 0.0001                                                                              # pas d'appretissage
+layers:                                                                                 # Tailles des couches cachées des réseaux
+- 30
+- 30
+conv:
+  - !!python/tuple [3,8,3,1]
+freqOptim: 1                                                                            # frequence d'optimisation en nombre d'évènements
+ctarget: 1000                                                                           # Frequence de mise a jour des poids du réseau target en nombre d'evenements (mise à jour tous les ctarget évènements)
+optimizer: !!python/name:torch.optim.Adam ''                                            # optimiseur à utiliser
+prioritizedReplay: true                                                                 # si vrai, prioritized replay
+vloss: !!python/name:torch.nn.SmoothL1Loss ''                                           # loss de la critique
+maxLengthTest: 500                                          # Longueur maxi des trajectoires en Test
+maxLengthTrain: 100                                         # Longueur maxi des trajectoires en Train
+execute: |                                                                              # a executer apres le chargement de l'environnement
+    env.setPlan(config["map"], config["rewards"])

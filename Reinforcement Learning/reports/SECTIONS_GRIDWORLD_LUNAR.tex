@@ -1,0 +1,261 @@
+\subsection{GridWorld}
+
+GridWorld est un environnement de navigation sur grille 2D où l'agent doit atteindre un objectif tout en évitant les obstacles et les zones dangereuses.
+
+\begin{itemize}
+    \item[] \textbf{État :} vecteur binaire de dimension 75 (grille 5×5 avec 3 canaux) :
+    \begin{itemize}
+        \item Canal 0 : position de l'agent,
+        \item Canal 1 : position de l'objectif,
+        \item Canal 2 : positions des obstacles et zones dangereuses.
+    \end{itemize}
+
+    \item[] \textbf{Actions :} quatre actions discrètes :
+    \begin{enumerate}
+        \item déplacer vers le haut,
+        \item déplacer vers la droite,
+        \item déplacer vers le bas,
+        \item déplacer vers la gauche.
+    \end{enumerate}
+
+    \item[] \textbf{Récompense :}
+    \begin{itemize}
+        \item $+1$ en atteignant l'objectif,
+        \item $-1$ en entrant dans une zone dangereuse,
+        \item $-0.001$ à chaque pas de temps (coût de déplacement).
+    \end{itemize}
+
+    \item[] \textbf{Terminalité :} l'épisode s'arrête si :
+    \begin{itemize}
+        \item[] l'agent atteint l'objectif,
+        \item[] l'agent entre dans une zone dangereuse,
+        \item[] un nombre maximum d'étapes est atteint.
+    \end{itemize}
+\end{itemize}
+
+%-----------------------------------------
+\subsubsection{Architecture du Réseau de Neurones}
+
+L'extraction de features utilise \texttt{MapFromDumpExtractor2} qui encode les positions de l'agent, de l'objectif et des obstacles dans une représentation binaire de dimension 75.
+
+Le réseau $\hat{Q}(s,a;\theta)$ est un perceptron multicouche (MLP) avec l'architecture suivante :
+
+\[
+\text{État} \xrightarrow{75 \text{ inputs}} \text{Couche } 1 \xrightarrow{30 \text{ neurones}} \text{Couche } 2 \xrightarrow{30 \text{ neurones}} \text{Q-values} \xrightarrow{4 \text{ outputs}}
+\]
+
+\textbf{Architecture implémentée :}
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|l|c|c|c|}
+    \hline
+    \textbf{Couche} & \textbf{Entrée} & \textbf{Sortie} & \textbf{Activation} \\
+    \hline
+    Input (État) & - & 75 & - \\
+    \hline
+    Dense (Cachée 1) & 75 & 30 & $\tanh$ \\
+    \hline
+    Dense (Cachée 2) & 30 & 30 & $\tanh$ \\
+    \hline
+    Output (Q-values) & 30 & 4 & Linéaire \\
+    \hline
+    \end{tabular}
+    \caption{Architecture du réseau Q pour GridWorld-v0 : 75 $\to$ 30 $\to$ 30 $\to$ 4}
+\end{table}
+
+\textbf{Justification :} GridWorld possède un espace d'état beaucoup plus complexe (75D). L'architecture à \textbf{2 couches cachées de 30 neurones} chacune permet de capturer les dépendances spatiales et de naviguer efficacement cette grille. Les deux couches $\tanh$ introduisent la non-linéarité suffisante pour apprendre une politique de navigation robuste.
+
+%-----------------------------------------
+\subsubsection{Hyperparamètres de l'Entraînement}
+
+\begin{table}[h!]
+    \centering
+    \small
+    \begin{tabular}{|l|c|l|}
+    \hline
+    \textbf{Paramètre} & \textbf{Valeur} & \textbf{Justification} \\
+    \hline
+    Learning rate ($\alpha$) & $0.0001$ & Apprentissage lent pour grande capacité réseau \\
+    \hline
+    Discount factor ($\gamma$) & $0.99$ & Horizon court relativement, proximité de l'objectif \\
+    \hline
+    Initial $\varepsilon$ & $0.1$ & 10\% d'exploration aléatoire \\
+    \hline
+    $\varepsilon$ decay & $0.9999$ & Décroissance modérée sur 100k épisodes \\
+    \hline
+    Minimum $\varepsilon$ & $0.01$ & 1\% minimum pour exploration \\
+    \hline
+    Batch size & $100$ & Taille standard \\
+    \hline
+    Buffer capacity & $10,000$ & Pour problème de moyenne complexité \\
+    \hline
+    Update frequency & $10$ & Chaque 10 événements \\
+    \hline
+    Target network update & $1,000$ & Stabilité pour apprentissage complexe \\
+    \hline
+    \end{tabular}
+\end{table}
+
+%-----------------------------------------
+\subsubsection{Résultats obtenus}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{PLACEHOLDER_gridworld_reward_train.png}
+        \caption{Récompense dans l'entraînement}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{PLACEHOLDER_gridworld_qvalue.png}
+        \caption{Q-valeur moyenne}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{PLACEHOLDER_gridworld_reward_test.png}
+        \caption{Récompense dans le test}
+    \end{subfigure}
+
+    \caption{Performance des trois métriques pour les variantes GridWorld}
+\end{figure}
+
+\subsubsection*{Interprétation des résultats}
+
+[À compléter après exécution de compare\_variants\_gridworld.py]
+
+%-----------------------------------------
+%-----------------------------------------
+%-----------------------------------------
+
+\subsection{LunarLander}
+
+LunarLander est un problème classique où l'agent doit atterrir un vaisseau spatial de manière sûre sur la lune en controlant la position et la rotation.
+
+\begin{itemize}
+    \item[] \textbf{État :} vecteur réel de dimension 8 :
+    \begin{enumerate}
+        \item position horizontale du vaisseau ($x$),
+        \item position verticale du vaisseau ($y$),
+        \item vitesse horizontale ($v_x$),
+        \item vitesse verticale ($v_y$),
+        \item angle de rotation ($\theta$),
+        \item vitesse angulaire ($\omega$),
+        \item contact jambe gauche (0 ou 1),
+        \item contact jambe droite (0 ou 1).
+    \end{enumerate}
+
+    \item[] \textbf{Actions :} quatre actions discrètes :
+    \begin{enumerate}
+        \item ne rien faire,
+        \item allumer moteur principal,
+        \item allumer moteur latéral gauche,
+        \item allumer moteur latéral droit.
+    \end{enumerate}
+
+    \item[] \textbf{Récompense :}
+    \begin{itemize}
+        \item $+100$ pour un atterrissage réussi,
+        \item $-100$ en cas de crash,
+        \item récompense basée sur la position et la vitesse (-1.5 $\times$ position $y$).
+    \end{itemize}
+
+    \item[] \textbf{Terminalité :} l'épisode s'arrête si :
+    \begin{itemize}
+        \item[] le vaisseau touche le sol (atterrissage réussi ou crash),
+        \item[] un nombre maximum d'étapes est atteint.
+    \end{itemize}
+\end{itemize}
+
+%-----------------------------------------
+\subsubsection{Architecture du Réseau de Neurones}
+
+Le réseau $\hat{Q}(s,a;\theta)$ est un perceptron multicouche (MLP) avec l'architecture suivante :
+
+\[
+\text{État} \xrightarrow{8 \text{ inputs}} \text{Couche cachée} \xrightarrow{\textbf{200 neurones}} \text{Q-values} \xrightarrow{4 \text{ outputs}}
+\]
+
+\textbf{Architecture implémentée :}
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|l|c|c|c|}
+    \hline
+    \textbf{Couche} & \textbf{Entrée} & \textbf{Sortie} & \textbf{Activation} \\
+    \hline
+    Input (État) & - & 8 & - \\
+    \hline
+    Dense (Cachée) & 8 & 200 & $\tanh$ \\
+    \hline
+    Output (Q-values) & 200 & 4 & Linéaire \\
+    \hline
+    \end{tabular}
+    \caption{Architecture du réseau Q pour LunarLander-v2 : 8 $\to$ 200 $\to$ 4}
+\end{table}
+
+\textbf{Justification :} LunarLander possède un espace d'état continu relativement petit (8D), mais requiert une approximation très précise de la fonction Q pour piloter correctement le vaisseau. La couche cachée de \textbf{200 neurones} avec activation $\tanh$ fournit la capacité d'approximation nécessaire pour capturer les dynamiques complexes du contrôle aérien.
+
+%-----------------------------------------
+\subsubsection{Hyperparamètres de l'Entraînement}
+
+\begin{table}[h!]
+    \centering
+    \small
+    \begin{tabular}{|l|c|l|}
+    \hline
+    \textbf{Paramètre} & \textbf{Valeur} & \textbf{Justification} \\
+    \hline
+    Learning rate ($\alpha$) & $0.0001$ & Convergence lente pour problème difficile \\
+    \hline
+    Discount factor ($\gamma$) & $0.99$ & Récompenses futures importantes, horizon moyen \\
+    \hline
+    Initial $\varepsilon$ & $0.1$ & 10\% d'exploration aléatoire \\
+    \hline
+    $\varepsilon$ decay & $0.99999$ & Décroissance très lente, exploration prolongée \\
+    \hline
+    Minimum $\varepsilon$ & $0.01$ & 1\% minimum pour exploration \\
+    \hline
+    Batch size & $100$ & Taille standard \\
+    \hline
+    Buffer capacity & $100,000$ & Très grande pour problème complexe et stochastique \\
+    \hline
+    Update frequency & $10$ & Chaque 10 événements \\
+    \hline
+    Target network update & $1,000$ & Stabilité critique pour ce problème \\
+    \hline
+    \end{tabular}
+\end{table}
+
+%-----------------------------------------
+\subsubsection{Résultats obtenus}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{PLACEHOLDER_lunar_reward_train.png}
+        \caption{Récompense dans l'entraînement}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{PLACEHOLDER_lunar_qvalue.png}
+        \caption{Q-valeur moyenne}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{PLACEHOLDER_lunar_reward_test.png}
+        \caption{Récompense dans le test}
+    \end{subfigure}
+
+    \caption{Performance des trois métriques pour les variantes LunarLander}
+\end{figure}
+
+\subsubsection*{Interprétation des résultats}
+
+[À compléter après exécution de compare\_variants\_lunar.py]

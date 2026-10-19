@@ -1,10 +1,13 @@
 import argparse
 import json
-import os
+from pathlib import Path
 
 import pandas as pd
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"
 
 
 def create_data(test_size: float, random_state: int):
@@ -19,38 +22,37 @@ def create_data(test_size: float, random_state: int):
         X, y, test_size=test_size, random_state=random_state, stratify=y
     )
 
-    # sauvegarder les datasets dans data/
-    os.makedirs("data", exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    X_train.to_csv("data/X_train.csv", index=False)
-    y_train.to_csv("data/y_train.csv", index=False, header=True)
+    X_train.to_csv(DATA_DIR / "X_train.csv", index=False)
+    y_train.to_csv(DATA_DIR / "y_train.csv", index=False, header=True)
 
-    X_test.to_csv("data/X_test.csv", index=False)
-    y_test.to_csv("data/y_test.csv", index=False, header=True)
+    X_test.to_csv(DATA_DIR / "X_test.csv", index=False)
+    y_test.to_csv(DATA_DIR / "y_test.csv", index=False, header=True)
 
     metadata = {"target_names": target_names}
-    with open("data/metadata.json", "w") as f:
+    with (DATA_DIR / "metadata.json").open("w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=4)
 
     print("Datasets saved to data/ directory.")
 
 
 def load_target_names():
-    with open("data/metadata.json", "r") as f:
+    with (DATA_DIR / "metadata.json").open(encoding="utf-8") as f:
         metadata = json.load(f)
     return metadata["target_names"]
 
 
 def load_train_data():
-    X_train = pd.read_csv("data/X_train.csv")
-    y_train = pd.read_csv("data/y_train.csv").squeeze()
+    X_train = pd.read_csv(DATA_DIR / "X_train.csv")
+    y_train = pd.read_csv(DATA_DIR / "y_train.csv").squeeze()
     target_names = load_target_names()
     return X_train, y_train, target_names
 
 
 def load_test_data():
-    X_test = pd.read_csv("data/X_test.csv")
-    y_test = pd.read_csv("data/y_test.csv").squeeze()
+    X_test = pd.read_csv(DATA_DIR / "X_test.csv")
+    y_test = pd.read_csv(DATA_DIR / "y_test.csv").squeeze()
     target_names = load_target_names()
     return X_test, y_test, target_names
 
