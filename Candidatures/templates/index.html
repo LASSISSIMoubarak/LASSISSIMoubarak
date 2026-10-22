@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cap Candidatures</title>
+  <title>Cap Carrière</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="{{ url_for('index') }}" aria-label="Cap Candidatures, accueil">
-      <span class="brand-mark">CC</span><span>cap<span class="brand-light">/</span>candidatures</span>
+    <a class="brand" href="{{ url_for('index') }}" aria-label="Cap Carrière, accueil">
+      <span class="brand-mark">CC</span><span>cap<span class="brand-light">/</span>carrière</span>
     </a>
     <div class="top-actions">
       <span class="local-state {% if ollama.ready %}is-ready{% else %}is-offline{% endif %}"><span class="state-dot"></span>{% if ollama.ready %}Qwen local prêt{% else %}Qwen indisponible{% endif %}</span>

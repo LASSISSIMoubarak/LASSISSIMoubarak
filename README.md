@@ -10,13 +10,20 @@ possible, la procédure d'exécution.
 
 ### Machine learning et data science
 
-- [Apprentissage par renforcement](<./Reinforcement Learning/README.md>) — agents
-  DQN/PPO, environnement GridWorld et configurations d'expérience.
+- [Apprentissage par renforcement](<./Reinforcement Learning/README.md>) — j’y
+  étudie et compare DQN et PPO sur CartPole et un environnement GridWorld que
+  j’ai créé, avec des configurations DQN pour LunarLander. J’explore aussi
+  différentes variantes et paramètres d’entraînement. Les checkpoints et
+  journaux d’expériences restent locaux et ne sont pas versionnés.
 - [MLOps - prédiction du cancer du sein](<./mlops/mlops_breast_cancer/README.md>) —
   pipeline reproductible de préparation des données, entraînement et prédiction.
 - [Machines et Deep Learning](<./Machines and Deep Learning/README.md>) — notebooks
   d'apprentissage automatique, réseaux de neurones et traitement de données.
-- [NLP](<./NLP/README.md>) — présentation NLP et architecture MLP.
+- [NLP](<./NLP/README.md>) — travaux pratiques et notebooks autour de la
+  classification de fake news, de la génération de titres avec T5, de la
+  recherche sémantique par embeddings et des Transformers. J’y présente aussi
+  une introduction aux LLM et au RAG, ainsi que des travaux sur l’architecture
+  MLP et le suivi d’expériences avec MLflow.
 - [Challenge QRT](<./Biostatistiques/DATA CHALLENGE QRT/README.md>) — analyse de
   survie et modélisation pour un challenge de données.
 
@@ -40,21 +47,13 @@ possible, la procédure d'exécution.
 
 ### Outil personnel
 
-- [Outil de candidatures](<./Candidatures/>) — application locale pour préparer
-  des candidatures. Ce dossier peut contenir des CV, des lettres et des données
-  personnelles ; ne le publie pas sans les avoir retirés et vérifiés.
-
-## Données et fichiers locaux
-
-Les jeux de données, exports, modèles entraînés, documents et médias ne sont pas
-tous publiés avec le code. Certaines exclusions sont volontaires pour éviter de
-publier des données de challenge, des résultats générés ou des fichiers
-personnels. Consulte le README du projet avant de l'exécuter : les données
-nécessaires peuvent devoir être obtenues séparément. N'ajoute jamais un fichier
-ignoré sans en vérifier la provenance, la licence et la confidentialité.
-
-Les expériences locales de reinforcement learning sont conservées dans
-`Reinforcement Learning/XP/` et ne sont pas versionnées.
+- [Cap Carrière](<./Candidatures/>) — j’ai développé cet assistant personnel
+  pour gagner du temps dans ma recherche d’emploi. Il me permet d’importer et
+  d’évaluer des offres, de suivre mes candidatures et de préparer des brouillons
+  de CV et de lettres adaptés à mon profil et à mes expériences. J’automatise
+  ainsi une partie de la préparation de mes dossiers, tout en gardant la main
+  pour relire, modifier et valider chaque document. Avec Ollama, la génération
+  peut se faire localement sur mon ordinateur.
 
 ## Contact
 
