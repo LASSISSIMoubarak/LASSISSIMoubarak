@@ -83,5 +83,5 @@ catboost_info/
 *.nc
 Reinforcement Learning/XP/
 
-# Projet de candidature prive : code non publie
-Candidatures/
+# Projet de candidature : README prive seulement
+Candidatures/README.md
