@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import URLError
@@ -154,6 +155,278 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Le tableau est prêt".encode(), response.data)
 
+    def test_project_library_and_detail_render_seeded_projects(self):
+        library = self.client.get("/projects")
+        self.assertEqual(library.status_code, 200)
+        self.assertIn("SolarWatch".encode(), library.data)
+        self.assertIn("Tableau de bord Power BI".encode(), library.data)
+        self.assertIn("Ajouter un autre projet".encode(), library.data)
+
+        detail = self.client.get("/projects/solarwatch")
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn("Projet personnel".encode(), detail.data)
+        self.assertIn("pas de pannes labellisées".encode(), detail.data)
+        self.assertIn("pas encore accessible à un recruteur".encode(), detail.data)
+
+        bi_detail = self.client.get("/projects/power-bi-transactions-india")
+        self.assertEqual(bi_detail.status_code, 200)
+        self.assertIn("Power Automate".encode(), bi_detail.data)
+        self.assertIn("transactions par secteur".encode(), bi_detail.data)
+
+    def test_projects_can_be_added_and_updated_with_validated_public_url(self):
+        with candidatures_app.app.app_context():
+            project_id = candidatures_app.get_db().execute(
+                "SELECT id FROM projects WHERE slug = 'solarwatch'"
+            ).fetchone()["id"]
+
+        response = self.post_form("/projects/save", data={
+            "project_id": str(project_id),
+            "title": "SolarWatch actualisé",
+            "summary": "Résumé vérifié.",
+            "description": "Périmètre documenté.",
+            "skills": "Python, LSTM",
+            "keywords": "solaire, prévision",
+            "highlights": "Résultat réellement observé",
+            "public_url": "github.com/exemple/solarwatch",
+        })
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            project = candidatures_app.get_db().execute(
+                "SELECT * FROM projects WHERE id = ?", (project_id,)
+            ).fetchone()
+            self.assertEqual(project["title"], "SolarWatch actualisé")
+            self.assertEqual(project["public_url"], "https://github.com/exemple/solarwatch")
+            self.assertEqual(project["highlights"], "Résultat réellement observé")
+
+        response = self.post_form("/projects/save", data={
+            "title": "Projet ajouté",
+            "summary": "Résumé du projet.",
+            "description": "Description du projet.",
+            "skills": "Python",
+            "keywords": "python, analyse",
+            "highlights": "Test documenté",
+            "public_url": "javascript:alert(1)",
+        })
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            self.assertIsNone(candidatures_app.get_db().execute(
+                "SELECT id FROM projects WHERE slug = 'projet-ajoute'"
+            ).fetchone())
+
+        response = self.post_form("/projects/save", data={
+            "title": "Projet ajouté",
+            "summary": "Résumé du projet.",
+            "description": "Description du projet.",
+            "skills": "Python",
+            "keywords": "python, analyse",
+            "highlights": "Test documenté",
+            "public_url": "",
+        })
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            self.assertIsNotNone(candidatures_app.get_db().execute(
+                "SELECT id FROM projects WHERE slug = 'projet-ajoute'"
+            ).fetchone())
+
+    def test_relevant_projects_are_persisted_and_used_in_cv_prompt_and_content(self):
+        response = self.post_form("/applications", data={
+            "company": "TotalEnergies",
+            "position": "Ingénieur Data Solaire et IA",
+            "job_description": (
+                "Analyser la production photovoltaïque, détecter les anomalies "
+                "des onduleurs et prévoir la production avec un modèle LSTM."
+            ),
+        })
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            choices = candidatures_app.ensure_application_project_choices(application)
+            self.assertEqual(choices[0]["slug"], "solarwatch")
+            solarwatch = next(item for item in choices if item["slug"] == "solarwatch")
+            self.assertEqual(solarwatch["is_selected"], 1)
+            projects = candidatures_app.selected_application_projects(application_id)
+            prompt = candidatures_app.build_prompt(
+                "cv",
+                candidatures_app.get_profile(),
+                application,
+                selected_projects=projects,
+            )
+            self.assertIn("PROJETS PERSONNELS SÉLECTIONNÉS", prompt)
+            self.assertIn("Le jeu ne contient pas de pannes labellisées", prompt)
+
+            cv = candidatures_app.inject_selected_projects("PROFIL\nData analyst.", projects)
+            self.assertIn("PROJETS", cv)
+            self.assertIn("Projet personnel", cv)
+            self.assertIn("alertes candidates", cv)
+            self.assertNotIn("PROJETS\nSolarWatch\nUn résultat inventé", cv)
+            self.assertLessEqual(len(projects), 2)
+
+    def test_cv_keeps_original_single_project_layout_for_two_selected_projects(self):
+        projects = [
+            {
+                "title": "Projet le plus pertinent",
+                "summary": "Surveillance photovoltaïque.",
+                "skills": "Python, pandas, LSTM",
+                "highlights": "Résultat mesuré sur test chronologique",
+                "public_url": "https://github.com/example/solar",
+            },
+            {
+                "title": "Projet secondaire",
+                "summary": "Autre projet de machine learning.",
+                "skills": "Python, scikit-learn",
+                "highlights": "Résultat secondaire",
+                "public_url": "",
+            },
+        ]
+        content = candidatures_app.inject_selected_projects(
+            "PROFIL\nData analyst.\nFORMATION\nMaster Data", projects
+        )
+        self.assertIn("Projet le plus pertinent", content)
+        self.assertIn("Résultat mesuré sur test chronologique", content)
+        self.assertIn("https://github.com/example/solar", content)
+        self.assertNotIn("Projet secondaire", content)
+
+        source = candidatures_app.make_cv_latex(
+            {"full_name": "Nom Exemple", "email": "", "phone": "", "location": ""},
+            {"position": "Data Analyst", "company": "Exemple"},
+            content,
+        )
+        self.assertIn(r"\cvsection{Projets}", source)
+        self.assertIn(r"\href{\detokenize{https://github.com/example/solar}}", source)
+        self.assertNotIn("Projet secondaire", source)
+        if candidatures_app.shutil.which("xelatex"):
+            pdf = PdfReader(candidatures_app.compile_latex(source, one_page=True))
+            self.assertEqual(len(pdf.pages), 1)
+            self.assertIn("Projet le plus pertinent", pdf.pages[0].extract_text())
+
+    def test_cv_project_title_uses_a_single_plain_hyphen(self):
+        project = {
+            "title": "Pipeline MLOps — classification du cancer du sein",
+            "summary": "Pipeline reproductible.",
+            "skills": "Python, scikit-learn",
+            "highlights": "",
+            "public_url": "",
+        }
+        cv = candidatures_app.inject_selected_projects("PROFIL\nData analyst.", [project])
+        self.assertIn("Pipeline MLOps - classification du cancer du sein", cv)
+        self.assertNotIn("—", cv)
+        self.assertNotIn("–", cv)
+
+    def test_cv_injection_replaces_all_duplicate_project_sections(self):
+        draft = (
+            "PROFIL\nData analyst.\n"
+            "PROJETS\nAncien projet un\n- Description une.\n"
+            "FORMATION\nMaster Data\n"
+            "PROJECTS\nAncien projet deux\n- Description deux.\n"
+        )
+        projects = [{
+            "title": "Projet sélectionné",
+            "summary": "Résumé vérifié.",
+            "skills": "Python",
+            "highlights": "Résultat vérifiable",
+            "public_url": "",
+        }]
+        updated = candidatures_app.inject_selected_projects(draft, projects)
+        self.assertEqual(
+            sum(
+                candidatures_app.CV_SECTION_ALIASES.get(
+                    candidatures_app.normalize_heading(line),
+                    candidatures_app.normalize_heading(line),
+                ) == "PROJETS"
+                for line in updated.splitlines()
+            ),
+            1,
+        )
+        self.assertIn("Projet sélectionné", updated)
+        self.assertNotIn("Ancien projet un", updated)
+        self.assertNotIn("Ancien projet deux", updated)
+        self.assertLess(updated.index("PROJETS"), updated.index("FORMATION"))
+
+    def test_application_project_selection_is_limited_to_two(self):
+        self.post_form("/applications", data={
+            "company": "Exemple",
+            "position": "Data",
+            "job_description": "machine learning data science Python analyse",
+        })
+        with candidatures_app.app.app_context():
+            application_id = candidatures_app.get_db().execute(
+                "SELECT id FROM applications"
+            ).fetchone()["id"]
+            choices = candidatures_app.ensure_application_project_choices(
+                candidatures_app.get_application(application_id)
+            )
+            project_ids = [str(choice["id"]) for choice in choices[:3]]
+        response = self.post_form(
+            f"/applications/{application_id}/projects",
+            data={"project_ids": project_ids},
+        )
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            selected = candidatures_app.selected_application_projects(application_id)
+            self.assertLessEqual(len(selected), 2)
+
+    def test_project_primary_choice_is_respected_and_generation_saves_unsaved_selection(self):
+        self.post_form("/profile", data={"resume_source": "Data analyst, Python, machine learning."})
+        self.post_form("/applications", data={
+            "company": "Exemple",
+            "position": "Ingénieur data énergie",
+            "job_description": (
+                "Projet solaire photovoltaïque, détection d'anomalies, prévision LSTM. "
+                "Pipeline reproductible machine learning avec scikit-learn et régression logistique."
+            ),
+        })
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            choices = candidatures_app.ensure_application_project_choices(application)
+            solarwatch = next(item for item in choices if item["slug"] == "solarwatch")
+            mlops = next(item for item in choices if item["slug"] == "mlops-breast-cancer")
+            error = candidatures_app.save_application_project_selection(
+                application,
+                [str(solarwatch["id"]), str(mlops["id"])],
+                str(solarwatch["id"]),
+            )
+            self.assertIsNone(error)
+            selected = candidatures_app.selected_application_projects(application_id)
+            self.assertEqual(selected[0]["slug"], "solarwatch")
+
+        page = self.client.get(f"/?selected={application_id}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'name="primary_project_id"', page.data)
+        self.assertIn(b"project_selection_submitted", page.data)
+
+        desired_id = str(mlops["id"])
+        other_selected_id = str(solarwatch["id"])
+        with patch(
+            "app.generate_with_ollama",
+            return_value="PROFIL\nAnalyste de données.\nFORMATION\nMaster Data.",
+        ):
+            response = self.post_form(
+                f"/applications/{application_id}/draft",
+                data={
+                    "kind": "cv",
+                    "provider": "ollama",
+                    "project_selection_submitted": "1",
+                    "project_ids": [other_selected_id, desired_id],
+                    "primary_project_id": desired_id,
+                },
+            )
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_application(application_id)
+            selected = candidatures_app.selected_application_projects(application_id)
+            self.assertEqual(
+                [project["slug"] for project in selected],
+                ["mlops-breast-cancer", "solarwatch"],
+            )
+            self.assertIn("Pipeline MLOps - classification du cancer du sein", application["cv_draft"])
+            self.assertNotIn("SolarWatch - surveillance", application["cv_draft"])
+
     def test_home_page_renders_one_application_table_header(self):
         self.post_form(
             "/applications",
@@ -274,8 +547,17 @@ class ApplicationTests(unittest.TestCase):
         with candidatures_app.app.app_context():
             self.assertEqual(
                 candidatures_app.get_application(application_id)["cv_draft"],
-                "PROFIL\nAnalyste.",
-            )
+                    "PROFIL\nAnalyste.\n\nPROJETS\n"
+                    "Tableau de bord Power BI - transactions en Inde\n"
+                    "Projet personnel\n"
+                    "- Rapport interactif orienté métier pour explorer les montants "
+                    "de transactions par secteur, genre, État, année et âge. Résultat "
+                    "documenté : Analyse interactive des montants par secteur "
+                    "d'activité et par genre\n"
+                    "- Technologies : Power BI, conception de tableaux de bord, "
+                    "visualisation de données, analyse métier, Power Automate, "
+                    "automatisation de l'actualisation",
+                )
 
     def test_copilot_generation_requires_consent_and_uses_selected_provider(self):
         self.post_form(
@@ -356,26 +638,51 @@ class ApplicationTests(unittest.TestCase):
                 "kind": "cv", "provider": "copilot", "allow_cloud": "yes"})
         self.post_form(f"/applications/{application_id}/example", data={"kind": "cv"})
         self.post_form(f"/applications/{application_id}/example", data={"kind": "cv"})
+        with patch(
+            "app.generate_with_copilot",
+            return_value="Madame, Monsieur,\nVotre offre m'intéresse.\nJe vous prie d'agréer.",
+        ):
+            self.post_form(f"/applications/{application_id}/draft", data={
+                "kind": "letter", "provider": "copilot", "allow_cloud": "yes"})
+        self.post_form(f"/applications/{application_id}/example", data={"kind": "letter"})
         with candidatures_app.app.app_context():
             examples = candidatures_app.get_style_examples()
-            self.assertEqual(len(examples), 1)
+            self.assertEqual(len(examples), 2)
             application = candidatures_app.get_application(application_id)
             prompt = candidatures_app.build_prompt(
                 "cv", candidatures_app.get_profile(), application, (), examples)
             self.assertIn("EXEMPLES DE CV VALIDÉS", prompt)
             self.assertIn("Analyste rigoureux", prompt)
+            self.assertNotIn("Votre offre m'intéresse", prompt)
             self.assertLess(len(prompt) - len(candidatures_app.build_prompt(
                 "cv", candidatures_app.get_profile(), application)), 2500)
             letter_prompt = candidatures_app.build_prompt(
                 "letter", candidatures_app.get_profile(), application, (), examples)
-            self.assertNotIn("EXEMPLES", letter_prompt)
+            self.assertIn("EXEMPLES DE LETTRES DE MOTIVATION VALIDÉS", letter_prompt)
+            self.assertIn("Votre offre m'intéresse", letter_prompt)
+            self.assertNotIn("EXEMPLES DE CV VALIDÉS", letter_prompt)
+            english_letter_prompt = candidatures_app.build_prompt(
+                "letter", candidatures_app.get_profile(), application, (), examples, "en")
+            self.assertIn("Votre offre m'intéresse", english_letter_prompt)
 
         with patch("app.generate_with_ollama", return_value="PROFIL\nOk.") as ollama:
             self.post_form(f"/applications/{application_id}/draft", data={"kind": "cv"})
         self.assertIn("Analyste rigoureux", ollama.call_args.args[0])
         self.assertEqual(ollama.call_args.kwargs["num_ctx"], candidatures_app.OLLAMA_CONTEXT_WITH_EXAMPLES)
 
-        self.post_form(f"/style-examples/{examples[0]['id']}/delete", data={})
+        with patch("app.generate_with_ollama", return_value="Madame, Monsieur.\nCordialement.") as ollama:
+            self.post_form(f"/applications/{application_id}/draft", data={
+                "kind": "letter", "language": "en"})
+        self.assertIn("Votre offre m'intéresse", ollama.call_args.args[0])
+        self.assertEqual(ollama.call_args.kwargs["num_ctx"], candidatures_app.OLLAMA_CONTEXT_WITH_EXAMPLES)
+
+        with patch("app.generate_with_copilot", return_value="Madame, Monsieur.\nCordialement.") as copilot:
+            self.post_form(f"/applications/{application_id}/draft", data={
+                "kind": "letter", "provider": "copilot", "allow_cloud": "yes"})
+        self.assertNotIn("EXEMPLES", copilot.call_args.args[0])
+
+        for example in examples:
+            self.post_form(f"/style-examples/{example['id']}/delete", data={})
         with candidatures_app.app.app_context():
             self.assertEqual(candidatures_app.get_style_examples(), [])
 
@@ -510,6 +817,64 @@ class ApplicationTests(unittest.TestCase):
         self.assertNotIn("Toujours avec enthousiasme", prompt)
         self.assertIn("N'invente aucun fait", prompt)
 
+    def test_letter_uses_primary_selected_project_as_offer_evidence(self):
+        self.post_form(
+            "/profile",
+            data={"resume_source": "Data analyst, Python, statistiques."},
+        )
+        self.post_form(
+            "/applications",
+            data={
+                "company": "TotalEnergies",
+                "position": "Ingénieur Data Solaire",
+                "job_description": "Analyser la production photovoltaïque et prévoir l'énergie solaire.",
+            },
+        )
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            projects = {
+                row["slug"]: row
+                for row in candidatures_app.get_projects()
+                if row["slug"] in {"solarwatch", "mlops-breast-cancer"}
+            }
+            error = candidatures_app.save_application_project_selection(
+                application,
+                [str(projects["solarwatch"]["id"]), str(projects["mlops-breast-cancer"]["id"])],
+                str(projects["solarwatch"]["id"]),
+            )
+            self.assertIsNone(error)
+
+        generated_letter = (
+            "Je candidate au poste proposé chez TotalEnergies.\n\n"
+            "Mon parcours comprend des expériences de data et de statistiques.\n\n"
+            "Ces compétences répondent aux besoins du poste et me permettront de contribuer aux analyses.\n\n"
+            "Je souhaite rejoindre vos équipes et contribuer à vos missions."
+        )
+        with patch("app.generate_with_ollama", return_value=generated_letter) as generate:
+            response = self.post_form(
+                f"/applications/{application_id}/draft",
+                data={"kind": "letter", "provider": "ollama", "language": "fr"},
+            )
+        self.assertEqual(response.status_code, 302)
+        prompt = generate.call_args.args[0]
+        self.assertIn("Projet personnel principal choisi", prompt)
+        self.assertIn("SolarWatch — surveillance de performance photovoltaïque", prompt)
+        self.assertNotIn("Pipeline MLOps", prompt)
+        with candidatures_app.app.app_context():
+            letter = candidatures_app.get_application(application_id)["letter_draft"]
+            self.assertIn(
+                "SolarWatch - surveillance de performance photovoltaïque", letter
+            )
+            self.assertIn("en mettant en pratique Python, pandas, scikit-learn, PyTorch", letter)
+            self.assertNotIn("Pipeline MLOps", letter)
+            self.assertLess(
+                letter.index("SolarWatch"),
+                letter.index("Ces compétences répondent"),
+            )
+
     def test_offer_matching_uses_certifications_without_misrepresenting_them(self):
         profile = {
             "resume_source": "",
@@ -638,6 +1003,60 @@ class ApplicationTests(unittest.TestCase):
         self.assertNotIn(r"\cvsection{Compétences clés}", source)
         self.assertNotIn(r"\cvsection{Aptitudes}", source)
 
+    def test_cv_experiences_are_sorted_newest_to_oldest_across_formats(self):
+        profile = {
+            "full_name": "Nom Exemple",
+            "email": "",
+            "phone": "",
+            "location": "",
+        }
+        application = {"position": "Data Analyst", "company": "Exemple"}
+        draft = (
+            "PROFIL\nAnalyste de données.\n"
+            "EXPERIENCES PROFESSIONNELLES\n"
+            "Data Scientist 03/2025 – 09/2025\nPOKAPOK\n"
+            "- Mission POKAPOK.\n"
+            "Data Analyst, Génétique Statistique\nUniversité d'Angers\n10/2025 – 02/2026\n"
+            "- Mission Université.\n"
+            "Data Analyst & BI Specialist 04/2026 – 09/2026\nParker Aerospace\n"
+            "- Mission Parker.\n"
+            "FORMATION\nMaster Data\n"
+        )
+
+        sorted_draft = candidatures_app.sort_cv_experience_sections(draft)
+        self.assertLess(
+            sorted_draft.index("Parker Aerospace"),
+            sorted_draft.index("Université d'Angers"),
+        )
+        self.assertLess(
+            sorted_draft.index("Université d'Angers"),
+            sorted_draft.index("POKAPOK"),
+        )
+
+        source = candidatures_app.make_cv_latex(profile, application, draft)
+        self.assertLess(
+            source.index(r"\cventry{Data Analyst \& BI Specialist}"),
+            source.index(r"\cventry{Data Analyst, Génétique Statistique}"),
+        )
+        self.assertLess(
+            source.index(r"\cventry{Data Analyst, Génétique Statistique}"),
+            source.index(r"\cventry{Data Scientist}"),
+        )
+
+        docx = Document(io.BytesIO(
+            candidatures_app.make_cv_docx(profile, application, draft).getvalue()
+        ))
+        docx_text = "\n".join(paragraph.text for paragraph in docx.paragraphs)
+        self.assertLess(docx_text.index("Parker Aerospace"), docx_text.index("Université d'Angers"))
+        self.assertLess(docx_text.index("Université d'Angers"), docx_text.index("POKAPOK"))
+
+        pdf = PdfReader(io.BytesIO(
+            candidatures_app.make_pdf(profile, application, draft, "cv").getvalue()
+        ))
+        pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        self.assertLess(pdf_text.index("Parker Aerospace"), pdf_text.index("Université d'Angers"))
+        self.assertLess(pdf_text.index("Université d'Angers"), pdf_text.index("POKAPOK"))
+
     def test_cv_latex_splits_semicolon_education_and_fits_one_page(self):
         profile = {
             "full_name": "Moubarak LASSISSI",
@@ -751,6 +1170,45 @@ LOGICIELS
                 "Databases and SQL for Data Science with Python",
             ],
         )
+
+    def test_cv_project_public_link_is_clickable_in_exports(self):
+        profile = {
+            "full_name": "Nom Exemple",
+            "email": "",
+            "phone": "",
+            "location": "",
+        }
+        application = {"position": "Data Analyst", "company": "Exemple"}
+        url = "https://github.com/exemple/solarwatch"
+        content = (
+            "PROJETS\nSolarWatch\nProjet personnel\n"
+            "- Résultat documenté : alertes candidates.\n"
+            f"- À consulter : {url}"
+        )
+
+        latex = candidatures_app.make_cv_latex(profile, application, content)
+        self.assertIn(rf"\href{{\detokenize{{{url}}}}}", latex)
+        if candidatures_app.shutil.which("xelatex"):
+            pdf_output = candidatures_app.compile_latex(latex, one_page=True)
+            pdf = PdfReader(pdf_output)
+            self.assertEqual(len(pdf.pages), 1)
+            self.assertTrue(any(
+                annotation.get_object().get("/A", {}).get("/URI") == url
+                for annotation in pdf.pages[0].get("/Annots", [])
+            ))
+
+        docx_output = candidatures_app.make_cv_docx(profile, application, content)
+        with zipfile.ZipFile(docx_output) as archive:
+            relationships = archive.read("word/_rels/document.xml.rels").decode()
+        self.assertIn(url, relationships)
+        self.assertIn("TargetMode=\"External\"", relationships)
+
+        pdf = PdfReader(io.BytesIO(candidatures_app.make_pdf(profile, application, content, "cv").getvalue()))
+        annotations = pdf.pages[0].get("/Annots", [])
+        self.assertTrue(any(
+            annotation.get_object().get("/A", {}).get("/URI") == url
+            for annotation in annotations
+        ))
 
     def test_cv_keeps_only_tools_matching_the_job(self):
         profile = {

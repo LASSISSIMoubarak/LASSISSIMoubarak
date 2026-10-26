@@ -98,6 +98,34 @@ tr.row-selected td { background:#f0f5ef; }
 .description-block { margin:0 0 23px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
 .description-block summary { padding:12px 0; color:var(--pine); cursor:pointer; font-size:11px; font-weight:700; }
 .description-block p { max-height:260px; overflow:auto; white-space:pre-wrap; color:#5d685f; font-size:11px; line-height:1.6; }
+.project-selection { margin:20px 0; padding:17px; border:1px solid var(--line); background:#eef2eb; }
+.project-selection .section-heading { margin-bottom:7px; }
+.project-selection h3 { margin:0; font-size:16px; }
+.project-choice-list { display:grid; gap:8px; }
+.project-choice { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; align-items:start; gap:10px; padding:12px; border:1px solid var(--line); background:var(--white); }
+.project-choice-select { cursor:pointer; }
+.project-choice-select input,.project-primary input { width:auto; margin:3px 0 0; }
+.project-primary { display:flex; align-items:center; gap:5px; color:var(--pine); font-size:10px; font-weight:700; white-space:nowrap; cursor:pointer; }
+.project-choice-copy { display:grid; gap:5px; font-weight:400; }
+.project-choice-copy strong { color:var(--ink); font-size:11px; }
+.project-choice-copy .muted { font-size:10px; }
+.project-match { color:var(--pine); font-size:10px; font-weight:700; }
+.project-public-link { overflow-wrap:anywhere; color:var(--pine); font-size:10px; }
+.project-preview-link { font-size:10px; white-space:nowrap; }
+.project-library-page { max-width:1050px; }
+.project-library-intro { margin:9px 0 24px; max-width:760px; }
+.project-library-list { display:grid; gap:14px; }
+.project-add-form { margin-top:28px; }
+.project-editor { display:grid; gap:12px; padding:18px; border:1px solid var(--line); background:var(--white); }
+.project-editor h3 { margin:0; font-size:15px; }
+.project-editor textarea { min-height:75px; }
+.project-detail-card { max-width:850px; margin:30px auto; padding:clamp(22px,5vw,50px); border:1px solid var(--line); background:var(--white); box-shadow:var(--shadow); }
+.project-detail-card h1 { margin:0 0 14px; font-size:clamp(28px,4vw,42px); }
+.project-detail-card h2 { margin:26px 0 10px; font-size:18px; }
+.project-detail-card p { color:#566258; font-size:14px; line-height:1.7; white-space:pre-line; }
+.project-detail-card ul { padding-left:20px; color:#566258; font-size:13px; line-height:1.8; }
+.project-detail-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px; }
+.project-detail-note { margin-top:22px; padding:12px; border-left:3px solid var(--yellow); background:#f8f2df; color:#63572e; font-size:11px; line-height:1.6; }
 .draft-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:15px; margin:19px 0 13px; }
 .draft-heading h3,.followup-form h3 { margin:0; font-size:18px; }
 .draft-heading .eyebrow { margin-bottom:5px; }
@@ -121,4 +149,4 @@ tr.row-selected td { background:#f0f5ef; }
 .followup-fields { grid-template-columns:.8fr 1fr 1fr; align-items:start; }
 .page-footer { display:flex; justify-content:space-between; gap:12px; margin-top:35px; padding-top:13px; border-top:1px solid var(--line); color:#929a91; font-size:9px; letter-spacing:.35px; }
 @media (max-width:1050px) { .layout{grid-template-columns:280px minmax(0,1fr)} .sidebar{padding-left:24px} .welcome-row{align-items:flex-start;flex-direction:column} .metrics{margin-left:-17px} .followup-fields{grid-template-columns:1fr 1fr} .followup-fields label:first-child{grid-column:span 2} }
-@media (max-width:720px) { .topbar{height:58px;padding:0 16px} .brand{font-size:13px} .top-actions{gap:11px} .local-state{font-size:0;gap:0} .state-dot{width:9px;height:9px} .top-actions .button{min-height:33px;padding:7px 9px;font-size:10px} .layout{display:flex;flex-direction:column} .sidebar{order:2;padding:24px 18px;border-top:1px solid var(--line);border-right:0} .workspace{padding:27px 17px 20px} .welcome-row{padding-bottom:20px} h1{font-size:36px} .metrics{width:100%;justify-content:space-between;margin-left:0} .metrics div{min-width:unset;flex:1;padding:0 10px} .metrics div:first-child{padding-left:0;border-left:0} .section-heading{align-items:flex-start;flex-direction:column;gap:7px} .section-heading>.muted{text-align:left} .offer-form{padding:14px} .field-pair-wide,.field-pair,.draft-grid,.followup-fields{grid-template-columns:1fr} .url-field,.followup-fields label:first-child{grid-column:auto} .form-end{align-items:flex-start;flex-direction:column} .form-end .button{width:100%} .pipeline-heading{align-items:flex-start} .pipeline-heading .muted{display:none} .detail-title-row{flex-direction:column} .draft-heading{align-items:flex-start;flex-direction:column} .page-footer{flex-direction:column} }
+@media (max-width:720px) { .topbar{height:58px;padding:0 16px} .brand{font-size:13px} .top-actions{gap:11px} .local-state{font-size:0;gap:0} .state-dot{width:9px;height:9px} .top-actions .button{min-height:33px;padding:7px 9px;font-size:10px} .layout{display:flex;flex-direction:column} .sidebar{order:2;padding:24px 18px;border-top:1px solid var(--line);border-right:0} .workspace{padding:27px 17px 20px} .welcome-row{padding-bottom:20px} h1{font-size:36px} .metrics{width:100%;justify-content:space-between;margin-left:0} .metrics div{min-width:unset;flex:1;padding:0 10px} .metrics div:first-child{padding-left:0;border-left:0} .section-heading{align-items:flex-start;flex-direction:column;gap:7px} .section-heading>.muted{text-align:left} .offer-form{padding:14px} .field-pair-wide,.field-pair,.draft-grid,.followup-fields{grid-template-columns:1fr} .url-field,.followup-fields label:first-child{grid-column:auto} .form-end{align-items:flex-start;flex-direction:column} .form-end .button{width:100%} .pipeline-heading{align-items:flex-start} .pipeline-heading .muted{display:none} .detail-title-row{flex-direction:column} .draft-heading{align-items:flex-start;flex-direction:column} .project-choice{grid-template-columns:auto minmax(0,1fr) auto} .project-primary{grid-column:2} .project-preview-link{grid-column:3;grid-row:1} .page-footer{flex-direction:column} }

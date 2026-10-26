@@ -22,6 +22,8 @@ from urllib.request import Request, urlopen
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.opc.exceptions import PackageNotFoundError
 from docx.shared import Inches, RGBColor
 from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -38,13 +40,14 @@ from reportlab.platypus import HRFlowable, KeepInFrame, Paragraph, SimpleDocTemp
 from xml.sax.saxutils import escape
 
 import job_import
+from project_catalog import PROJECT_SEEDS, project_slug, rank_projects
 
 
 MODEL_NAME = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
 OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "900"))
 COPILOT_TIMEOUT = int(os.environ.get("COPILOT_TIMEOUT", "300"))
 MAX_REFERENCE_CONTEXT_CHARS = 12000
-MAX_STYLE_EXAMPLES = 2
+MAX_STYLE_EXAMPLES = 1
 MAX_STYLE_EXAMPLE_CHARS = 1800
 OLLAMA_CONTEXT = 4096
 OLLAMA_CONTEXT_WITH_EXAMPLES = 6144
@@ -69,6 +72,7 @@ def get_db():
         database_path.parent.mkdir(parents=True, exist_ok=True)
         g.db = sqlite3.connect(database_path)
         g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 
@@ -156,8 +160,52 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            skills TEXT NOT NULL DEFAULT '',
+            keywords TEXT NOT NULL DEFAULT '',
+            highlights TEXT NOT NULL DEFAULT '',
+            public_url TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS application_projects (
+            application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            match_score INTEGER NOT NULL DEFAULT 0,
+            match_reason TEXT NOT NULL DEFAULT '',
+            is_selected INTEGER NOT NULL DEFAULT 0,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (application_id, project_id)
+        );
         INSERT OR IGNORE INTO profile (id) VALUES (1);
         """
+    )
+    now = datetime.now().isoformat(timespec="seconds")
+    database.executemany(
+        """INSERT OR IGNORE INTO projects
+           (slug, title, summary, description, skills, keywords, highlights, public_url,
+            created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        [
+            (
+                project["slug"],
+                project["title"],
+                project["summary"],
+                project["description"],
+                project["skills"],
+                project["keywords"],
+                "\n".join(project["highlights"]),
+                project["public_url"],
+                now,
+                now,
+            )
+            for project in PROJECT_SEEDS
+        ],
     )
     profile_columns = {
         row["name"] for row in database.execute("PRAGMA table_info(profile)").fetchall()
@@ -176,6 +224,33 @@ def init_db():
         database.execute("ALTER TABLE applications ADD COLUMN match_score INTEGER")
     if "match_reason" not in application_columns:
         database.execute("ALTER TABLE applications ADD COLUMN match_reason TEXT NOT NULL DEFAULT ''")
+    project_choice_columns = {
+        row["name"]
+        for row in database.execute("PRAGMA table_info(application_projects)").fetchall()
+    }
+    if "is_primary" not in project_choice_columns:
+        database.execute(
+            "ALTER TABLE application_projects ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"
+        )
+    database.execute(
+        """UPDATE application_projects
+           SET is_primary = 1
+           WHERE is_selected = 1
+             AND project_id = (
+                 SELECT ap2.project_id
+                 FROM application_projects ap2
+                 JOIN projects p2 ON p2.id = ap2.project_id
+                 WHERE ap2.application_id = application_projects.application_id
+                   AND ap2.is_selected = 1
+                 ORDER BY ap2.match_score DESC, p2.title COLLATE NOCASE
+                 LIMIT 1
+             )
+             AND NOT EXISTS (
+                 SELECT 1 FROM application_projects ap3
+                 WHERE ap3.application_id = application_projects.application_id
+                   AND ap3.is_primary = 1
+             )"""
+    )
     database.commit()
 
 
@@ -185,6 +260,149 @@ def get_profile():
 
 def get_application(application_id):
     return get_db().execute("SELECT * FROM applications WHERE id = ?", (application_id,)).fetchone()
+
+
+def get_projects():
+    return get_db().execute("SELECT * FROM projects ORDER BY title COLLATE NOCASE").fetchall()
+
+
+def project_highlights(project):
+    return [
+        item.strip(" -*•\t")
+        for item in (project["highlights"] or "").splitlines()
+        if item.strip(" -*•\t")
+    ]
+
+
+def project_prompt_context(projects):
+    blocks = []
+    for index, project in enumerate(projects):
+        designation = (
+            "Projet personnel principal choisi pour cette candidature"
+            if index == 0
+            else "Autre projet personnel sélectionné"
+        )
+        lines = [
+            f"{designation} : {project['title']}",
+            f"Résumé : {project['summary']}",
+            f"Description : {project['description']}",
+            f"Technologies et méthodes documentées : {project['skills']}",
+            "Résultats ou éléments documentés :",
+            *[f"- {item}" for item in project_highlights(project)],
+        ]
+        if project["public_url"]:
+            lines.append(f"Lien public du projet : {project['public_url']}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def ensure_application_project_choices(application):
+    projects = list(get_projects())
+    offer_text = "\n".join(
+        (
+            application["position"],
+            application["company"],
+            application["job_description"],
+        )
+    )
+    ranked = rank_projects(offer_text, projects)
+    database = get_db()
+    existing = {
+        row["project_id"]: row
+        for row in database.execute(
+            "SELECT * FROM application_projects WHERE application_id = ?",
+            (application["id"],),
+        ).fetchall()
+    }
+    recommended = [
+        item["id"]
+        for item in ranked
+        if item["match_score"] > 0
+    ][:2]
+    for item in ranked:
+        current = existing.get(item["id"])
+        database.execute(
+            """INSERT INTO application_projects
+               (application_id, project_id, match_score, match_reason, is_selected, is_primary)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(application_id, project_id) DO UPDATE SET
+                   match_score = excluded.match_score,
+                   match_reason = excluded.match_reason""",
+            (
+                application["id"],
+                item["id"],
+                item["match_score"],
+                item["match_reason"],
+                int(item["id"] in recommended) if current is None else current["is_selected"],
+                int(bool(recommended) and item["id"] == recommended[0]) if current is None else 0,
+            ),
+        )
+    database.commit()
+    choices = database.execute(
+        """SELECT p.*, ap.match_score, ap.match_reason, ap.is_selected, ap.is_primary
+           FROM application_projects ap
+           JOIN projects p ON p.id = ap.project_id
+           WHERE ap.application_id = ?
+           ORDER BY ap.is_primary DESC, ap.match_score DESC, p.title COLLATE NOCASE""",
+        (application["id"],),
+    ).fetchall()
+    return choices
+
+
+def selected_application_projects(application_id):
+    return get_db().execute(
+        """SELECT p.*
+           FROM application_projects ap
+           JOIN projects p ON p.id = ap.project_id
+           WHERE ap.application_id = ? AND ap.is_selected = 1
+           ORDER BY ap.is_primary DESC, ap.match_score DESC, p.title COLLATE NOCASE""",
+        (application_id,),
+    ).fetchall()
+
+
+def save_application_project_selection(application, submitted_ids, primary_id=None):
+    choices = ensure_application_project_choices(application)
+    available_ids = {choice["id"] for choice in choices}
+    selected_ids = set()
+    for value in submitted_ids:
+        try:
+            project_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if project_id in available_ids:
+            selected_ids.add(project_id)
+    if len(selected_ids) > 2:
+        return "Sélectionne au maximum deux projets pour garder des documents lisibles."
+
+    try:
+        primary_id = int(primary_id) if primary_id else None
+    except (TypeError, ValueError):
+        primary_id = None
+    if primary_id not in selected_ids:
+        current_primary = next(
+            (choice["id"] for choice in choices if choice["is_primary"] and choice["id"] in selected_ids),
+            None,
+        )
+        primary_id = current_primary
+    if primary_id is None and selected_ids:
+        primary_id = next(choice["id"] for choice in choices if choice["id"] in selected_ids)
+
+    database = get_db()
+    for project_id in available_ids:
+        is_selected = project_id in selected_ids
+        database.execute(
+            """UPDATE application_projects
+               SET is_selected = ?, is_primary = ?
+               WHERE application_id = ? AND project_id = ?""",
+            (
+                int(is_selected),
+                int(is_selected and project_id == primary_id),
+                application["id"],
+                project_id,
+            ),
+        )
+    database.commit()
+    return None
 
 
 def get_reference_documents():
@@ -219,9 +437,11 @@ def build_examples_context(kind, examples):
     ]
     return (
         f"\n\nEXEMPLES DE {label.upper()} VALIDÉS (modèles de qualité)\n"
-        "Imite uniquement leur structure, leur ton, leur longueur et leur façon de formuler. "
+        "Prends l'exemple comme gabarit : reprends l'organisation des rubriques ou des paragraphes, "
+        "leur ordre, le niveau de détail, le ton et une longueur comparable. "
         "Ils concernent d'autres offres : n'en reprends aucune entreprise cible, aucune phrase telle quelle "
-        "et aucun fait, chiffre ou outil absent des sources de référence du candidat.\n\n"
+        "et aucun fait, chiffre ou outil absent des sources de référence du candidat. "
+        "Pour les faits, les sources du candidat et l'offre actuelle priment toujours sur l'exemple.\n\n"
         + "\n\n".join(blocks)
     )
 
@@ -419,7 +639,9 @@ def english_task(kind):
             "identifier. Invent no certification or skill. Omit the section if none matches; never copy the "
             "whole list. "
             "SOFTWARE: 8 tools maximum, kept only if requested in the offer or directly useful to its missions. "
-            "Projects: at most 1 project, only if more relevant than a retained experience. "
+            "Projects: include only the candidate's selected, documented personal projects below; include at "
+            "most 2 when relevant, never present them as employment, and copy a public project URL exactly "
+            "when provided. Do not invent a project or link. "
             "Education: keep the degrees from the source resume, one per entry, with degree, institution and "
             "dates on separate lines. Never merge several degrees on one line and do not separate them with "
             "semicolons. Maximum 350 words. Plain text, no tables, icons or skill bars."
@@ -451,13 +673,26 @@ def english_task(kind):
         "4) Conclusion: in one or two sentences, soberly highlight open-mindedness, agility, proactivity or "
         "adaptability only if the sources justify it. The application adds the interview sentence: do not "
         "write it. Write 'at [employer]' to place an experience. "
+        "If a selected personal project is provided, the first project is the candidate's primary choice. "
+        "Use this primary project explicitly in paragraph 3 as concrete evidence; do not omit it or substitute "
+        "another project. Describe only its documented scope and skills, relating them to the offer without "
+        "claiming expertise in an unrelated domain. Clearly call it a personal project, never employment. "
+        "Invite the recruiter to view it only when a public URL is provided, and copy that URL exactly. "
         "Invent no fact, figure, degree, length of experience, tool, responsibility, result or company "
         "quality. Do not claim success unless the sources prove it. Do not repeat the resume line by line "
         "and add no thanks or closing formula."
     )
 
 
-def build_prompt(kind, profile, application, reference_documents=(), style_examples=(), language="fr"):
+def build_prompt(
+    kind,
+    profile,
+    application,
+    reference_documents=(),
+    style_examples=(),
+    language="fr",
+    selected_projects=(),
+):
     profile_text = "\n".join(
         [
             f"Nom : {profile['full_name']}", f"E-mail : {profile['email']}",
@@ -479,6 +714,8 @@ def build_prompt(kind, profile, application, reference_documents=(), style_examp
             "pas des experiences professionnelles) :\n"
             + "\n".join(f"- {item}" for item in certifications)
         )
+    projects_for_prompt = selected_projects[:1] if kind == "letter" else selected_projects
+    projects_text = project_prompt_context(projects_for_prompt)
     offer_text = "\n".join(
         [
             f"Poste : {application['position']}", f"Entreprise : {application['company']}",
@@ -542,7 +779,10 @@ def build_prompt(kind, profile, application, reference_documents=(), style_examp
             "Omet cette rubrique si aucune certification ne correspond ; ne recopie jamais toute la liste. "
             "LOGICIELS : 8 outils maximum, gardes uniquement s'ils sont demandes dans l'offre ou directement "
             "utiles a ses missions. "
-            "Projets : au plus 1 projet, uniquement s'il est plus pertinent qu'une experience conservee. "
+            "Projets : utilise uniquement les projets personnels sélectionnés et documentés ci-dessous. "
+            "Ajoute au plus 2 projets s'ils sont pertinents, sous une rubrique PROJETS, et présente-les "
+            "explicitement comme des projets personnels, jamais comme un emploi. Recopie exactement tout "
+            "lien public fourni ; n'invente aucun projet ni lien. "
             "Formation : conserve les diplomes du CV source, une formation par entree, avec "
             "diplome, etablissement et dates sur "
             "des lignes distinctes. Ne fusionne jamais plusieurs diplomes sur une ligne et ne les separe pas "
@@ -581,12 +821,26 @@ def build_prompt(kind, profile, application, reference_documents=(), style_examp
             "4) Conclusion : en une ou deux phrases, souligne sobrement l'ouverture d'esprit, l'agilite, la proactivite ou l'adaptation "
             "seulement si les sources le justifient. L'application ajoute la phrase sur l'entretien : ne la redige pas. "
             "Ecris « aupres de [employeur] » pour situer une experience, jamais « chez [employeur] ». "
+            "Si un projet personnel sélectionné est fourni, le premier projet est le choix principal du candidat. "
+            "Utilise explicitement ce projet principal dans le paragraphe 3 comme preuve concrète ; ne l'omet "
+            "pas et ne le remplace pas par un autre projet. Décris uniquement son périmètre et ses compétences "
+            "documentés, en les reliant à l'offre sans revendiquer une expertise dans un domaine sans rapport. "
+            "Présente-le clairement comme projet personnel, jamais comme emploi. Invite le recruteur à le "
+            "consulter uniquement si un lien public est fourni, et recopie ce lien exactement. "
             "N'invente aucun fait, chiffre, diplome, duree d'experience, outil, responsabilite, resultat ni "
             "qualite de l'entreprise. N'affirme pas que tu as reussi quelque chose si les sources ne le prouvent. "
             "Ne repete pas le CV ligne par ligne et n'ajoute pas de remerciement ou formule de fin."
         )
     examples_text = build_examples_context(kind, style_examples)
-    return f"{task}{examples_text}\n\nPROFIL\n{profile_text}\n\nOFFRE\n{offer_text}"
+    project_section = (
+        f"\n\nPROJETS PERSONNELS SÉLECTIONNÉS POUR CETTE OFFRE\n{projects_text}"
+        if projects_text
+        else "\n\nAucun projet de la bibliothèque n'a été sélectionné pour cette offre."
+    )
+    return (
+        f"{task}{examples_text}\n\nPROFIL\n{profile_text}\n\nOFFRE\n{offer_text}"
+        f"{project_section}"
+    )
 
 
 def clean_cv_draft(content):
@@ -606,6 +860,68 @@ def clean_cv_draft(content):
             continue
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines).strip()
+
+
+def inject_selected_projects(cv_content, projects):
+    """Replace any generated project section with the candidate's selected facts."""
+    lines = cv_content.splitlines()
+    section_starts = []
+    for index, line in enumerate(lines):
+        normalized_heading = normalize_heading(line)
+        heading = CV_SECTION_ALIASES.get(normalized_heading, normalized_heading)
+        if heading in CV_SECTION_TITLES:
+            section_starts.append((index, heading))
+    project_ranges = [
+        (
+            start,
+            section_starts[position + 1][0]
+            if position + 1 < len(section_starts)
+            else len(lines),
+        )
+        for position, (start, key) in enumerate(section_starts)
+        if key == "PROJETS"
+    ]
+    for start, end in reversed(project_ranges):
+        del lines[start:end]
+
+    if not projects:
+        return "\n".join(lines).strip()
+
+    block = ["PROJETS"]
+    for project in projects[:1]:
+        result = project_highlights(project)
+        project_summary = project["summary"]
+        if result:
+            project_summary = f"{project_summary} Résultat documenté : {result[0]}"
+        block.extend(
+            [
+                normalize_dashes(project["title"]),
+                "Projet personnel",
+                f"- {project_summary}",
+                f"- Technologies : {project['skills']}",
+            ]
+        )
+        if project["public_url"]:
+            block.append(f"- À consulter : {project['public_url']}")
+
+    refreshed_starts = []
+    for index, line in enumerate(lines):
+        normalized_heading = normalize_heading(line)
+        heading = CV_SECTION_ALIASES.get(normalized_heading, normalized_heading)
+        if heading in CV_SECTION_TITLES:
+            refreshed_starts.append((index, heading))
+    insert_at = next(
+        (
+            start
+            for start, key in refreshed_starts
+            if key in {"FORMATION", "CERTIFICATIONS", "LOGICIELS"}
+        ),
+        len(lines),
+    )
+    if insert_at and lines[insert_at - 1].strip():
+        block.insert(0, "")
+    lines[insert_at:insert_at] = block
+    return "\n".join(lines).strip()
 
 
 def normalize_dashes(text):
@@ -671,6 +987,46 @@ def clean_letter_draft(content, profile_name=""):
     if cleaned[:1].islower():
         cleaned = cleaned[0].upper() + cleaned[1:]
     return normalize_dashes(cleaned)
+
+
+def inject_primary_project_in_letter(content, projects, language="fr"):
+    if not projects:
+        return content
+    project = projects[0]
+    title = normalize_dashes(project["title"]).strip()
+    if title.casefold() in content.casefold():
+        return content
+
+    skills = [
+        item.strip()
+        for item in re.split(r"[,;\n]", project["skills"] or "")
+        if item.strip()
+    ][:4]
+    if language == "en":
+        sentence = f'I also completed the personal project "{title}"'
+        if skills:
+            sentence += f", applying {', '.join(skills)}"
+        sentence += "."
+        if project["public_url"]:
+            sentence += f" You can view it here: {project['public_url']}."
+    else:
+        sentence = f'J’ai également mené le projet personnel « {title} »'
+        if skills:
+            sentence += f", en mettant en pratique {', '.join(skills)}"
+        sentence += "."
+        if project["public_url"]:
+            sentence += f" Vous pouvez le consulter ici : {project['public_url']}."
+
+    paragraphs = [
+        paragraph.strip()
+        for paragraph in re.split(r"\n\s*\n", content.strip())
+        if paragraph.strip()
+    ]
+    if not paragraphs:
+        return sentence
+    target = min(2, len(paragraphs) - 1)
+    paragraphs[target] = f"{sentence} {paragraphs[target]}"
+    return "\n\n".join(paragraphs)
 
 
 REFUSAL_PATTERNS = (
@@ -878,6 +1234,39 @@ def make_docx(title, content):
     return output
 
 
+PROJECT_LINK_LINE = re.compile(r"^[-*•]\s*À consulter\s*:\s*(https?://\S+)\s*$", re.IGNORECASE)
+
+
+def project_link_from_line(line):
+    match = PROJECT_LINK_LINE.match(line.strip())
+    if not match:
+        return ""
+    return normalize_profile_url(match.group(1))
+
+
+def add_docx_hyperlink(paragraph, url):
+    relationship_id = paragraph.part.relate_to(
+        url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True,
+    )
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), relationship_id)
+    run = OxmlElement("w:r")
+    properties = OxmlElement("w:rPr")
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), "21493f")
+    properties.append(color)
+    underline = OxmlElement("w:u")
+    underline.set(qn("w:val"), "single")
+    properties.append(underline)
+    run.append(properties)
+    text = OxmlElement("w:t")
+    text.text = url
+    run.append(text)
+    hyperlink.append(run)
+    paragraph._p.append(hyperlink)
+
+
 def french_date():
     months = [
         "janvier", "fevrier", "mars", "avril", "mai", "juin",
@@ -1020,6 +1409,7 @@ def make_letter_docx(profile, application, content):
 
 
 def make_cv_docx(profile, application, content):
+    content = sort_cv_experience_sections(content)
     language = detect_language(content)
     document = Document()
     section = document.sections[0]
@@ -1070,6 +1460,9 @@ def make_cv_docx(profile, application, content):
             run.bold = True
             run.font.size = 11
             run.font.color.rgb = RGBColor(33, 73, 63)
+        elif current_section == "PROJETS" and project_link_from_line(text):
+            paragraph = document.add_paragraph(style="List Bullet")
+            add_docx_hyperlink(paragraph, project_link_from_line(text))
         elif text.startswith(("- ", "* ", "• ")):
             document.add_paragraph(text[2:].strip(), style="List Bullet")
         elif current_section == "EXPERIENCES PROFESSIONNELLES" and re.search(r"[.!?]$", text):
@@ -1098,6 +1491,8 @@ def pdf_styles():
 
 
 def make_pdf(profile, application, content, kind):
+    if kind == "cv":
+        content = sort_cv_experience_sections(content)
     language = detect_language(content)
     text_labels = LETTER_TEXT[language]
     output = io.BytesIO()
@@ -1149,6 +1544,7 @@ def make_pdf(profile, application, content, kind):
         story.append(Spacer(1, 8))
         story.append(Paragraph(name, styles["body"]))
 
+    current_section = ""
     for line in content.splitlines() if kind == "cv" else []:
         text = line.strip()
         if not text:
@@ -1156,7 +1552,14 @@ def make_pdf(profile, application, content, kind):
             continue
         plain = text.strip("*# ").rstrip(":").strip()
         if kind == "cv" and plain.upper() in headings:
+            current_section = CV_SECTION_ALIASES.get(normalize_heading(plain), normalize_heading(plain))
             story.append(Paragraph(escape(plain.upper()), styles["section"]))
+        elif kind == "cv" and current_section == "PROJETS" and project_link_from_line(text):
+            url = project_link_from_line(text)
+            href = escape(url, {'"': "&quot;"})
+            story.append(Paragraph(
+                f'&bull; <link href="{href}"><u>{escape(url)}</u></link>', styles["body"]
+            ))
         elif text.startswith(("- ", "* ", "• ")):
             story.append(Paragraph("&bull; " + escape(text[2:].strip()), styles["body"]))
         else:
@@ -1290,7 +1693,14 @@ def normalize_heading(text):
 def latex_itemize(items):
     if not items:
         return []
-    return [r"\begin{cvitems}"] + [rf"\item {latex_escape(item)}" for item in items] + [r"\end{cvitems}"]
+    rendered = []
+    for item in items:
+        url = project_link_from_line(f"- {item}")
+        rendered.append(
+            rf"\item \href{{\detokenize{{{url}}}}}{{\detokenize{{{url}}}}}"
+            if url else rf"\item {latex_escape(item)}"
+        )
+    return [r"\begin{cvitems}"] + rendered + [r"\end{cvitems}"]
 
 
 CV_DATE_RANGE = re.compile(
@@ -1422,6 +1832,81 @@ def latex_entries(lines, max_items=None, max_entries=None):
     return output
 
 
+def experience_start_month(header_lines):
+    for line in header_lines:
+        match = CV_DATE_RANGE.search(line)
+        if not match:
+            continue
+        start = re.split(r"\s*[–—-]\s*", match.group("date"), maxsplit=1)[0].strip()
+        if re.fullmatch(r"(?:0?[1-9]|1[0-2])/\d{4}", start):
+            month, year = start.split("/")
+            return int(year) * 12 + int(month)
+        if re.fullmatch(r"\d{4}", start):
+            return int(start) * 12
+    return None
+
+
+def sort_experience_entries(lines):
+    entries = []
+    entry_lines = []
+    header_lines = []
+    has_details = False
+
+    def flush():
+        nonlocal entry_lines, header_lines, has_details
+        if entry_lines:
+            entries.append(
+                (experience_start_month(header_lines), len(entries), entry_lines)
+            )
+        entry_lines = []
+        header_lines = []
+        has_details = False
+
+    for line in lines:
+        skills_match = CV_SKILLS_LINE.match(line)
+        is_bullet = line.startswith(("- ", "* ", "• "))
+        text = line[2:].strip() if is_bullet else line
+        is_header = not skills_match and not is_bullet and len(text) <= 90 and not text.endswith(".")
+        if is_header and has_details:
+            flush()
+        entry_lines.append(line)
+        if is_header:
+            header_lines.append(line)
+        else:
+            has_details = True
+    flush()
+
+    entries.sort(
+        key=lambda entry: (
+            entry[0] is None,
+            -(entry[0] or 0),
+            entry[1],
+        )
+    )
+    return [line for _date, _index, block in entries for line in block]
+
+
+def sort_cv_experience_sections(content):
+    lines = content.splitlines()
+    section_starts = []
+    for index, line in enumerate(lines):
+        normalized_heading = normalize_heading(line)
+        heading = CV_SECTION_ALIASES.get(normalized_heading, normalized_heading)
+        if heading in CV_SECTION_TITLES:
+            section_starts.append((index, heading))
+
+    for position, (start, heading) in reversed(list(enumerate(section_starts))):
+        if heading != "EXPERIENCES PROFESSIONNELLES":
+            continue
+        end = (
+            section_starts[position + 1][0]
+            if position + 1 < len(section_starts)
+            else len(lines)
+        )
+        lines[start + 1:end] = sort_experience_entries(lines[start + 1:end])
+    return "\n".join(lines).strip()
+
+
 def latex_education_entries(lines):
     segments = [
         segment.strip().strip(" ;")
@@ -1491,6 +1976,7 @@ def latex_education_entries(lines):
 
 
 def make_cv_latex(profile, application, content, layout=None):
+    content = sort_cv_experience_sections(content)
     layout = parse_cv_layout(layout)
     language = detect_language(content)
     section_titles = CV_SECTION_TITLES_EN if language == "en" else CV_SECTION_TITLES
@@ -1737,6 +2223,9 @@ def index():
     selected = get_application(selected_id) if selected_id else None
     if selected is None and applications:
         selected = applications[0]
+    project_choices = (
+        ensure_application_project_choices(selected) if selected else []
+    )
     profile = get_profile()
     reference_documents = get_reference_documents()
     has_resume = bool(profile["resume_source"].strip() or reference_documents)
@@ -1751,6 +2240,8 @@ def index():
         cv_layout=parse_cv_layout(selected["cv_layout"] if selected else None),
         cv_accents=CV_ACCENTS,
         has_resume=has_resume,
+        project_choices=project_choices,
+        project_catalog_count=len(get_projects()),
         has_job_description=bool(selected and selected["job_description"].strip()),
         can_generate=bool(has_resume and selected and selected["job_description"].strip()),
         counts={
@@ -1759,6 +2250,104 @@ def index():
             "interviews": sum(item["status"] == "Entretien" for item in applications),
         },
     )
+
+
+@app.get("/projects")
+def project_library():
+    return render_template("projects.html", projects=get_projects())
+
+
+@app.get("/projects/<slug>")
+def project_detail(slug):
+    project = get_db().execute(
+        "SELECT * FROM projects WHERE slug = ?", (slug,)
+    ).fetchone()
+    if project is None:
+        abort(404)
+    return render_template(
+        "project_detail.html",
+        project=project,
+        highlights=project_highlights(project),
+    )
+
+
+@app.post("/projects/save")
+def save_project():
+    project_id = request.form.get("project_id", type=int)
+    title = request.form.get("title", "").strip()[:180]
+    summary = request.form.get("summary", "").strip()[:500]
+    description = request.form.get("description", "").strip()[:5000]
+    skills = request.form.get("skills", "").strip()[:1000]
+    keywords = request.form.get("keywords", "").strip()[:1500]
+    highlights = request.form.get("highlights", "").strip()[:2000]
+    if not title or not summary or not description:
+        flash("Le titre, le résumé et la description du projet sont requis.", "error")
+        return redirect(url_for("project_library"))
+    try:
+        public_url = normalize_profile_url(request.form.get("public_url", ""))
+    except ValueError as error:
+        flash(f"Lien du projet invalide : {error}", "error")
+        return redirect(url_for("project_library"))
+
+    now = datetime.now().isoformat(timespec="seconds")
+    database = get_db()
+    if project_id:
+        if database.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone() is None:
+            flash("Projet introuvable.", "error")
+            return redirect(url_for("project_library"))
+        database.execute(
+            """UPDATE projects
+               SET title = ?, summary = ?, description = ?, skills = ?, keywords = ?,
+                   highlights = ?, public_url = ?, updated_at = ?
+               WHERE id = ?""",
+            (
+                title, summary, description, skills, keywords, highlights,
+                public_url, now, project_id,
+            ),
+        )
+        flash("Projet mis à jour. Les prochains brouillons utiliseront ces informations.", "success")
+    else:
+        slug = project_slug(title)
+        if database.execute("SELECT 1 FROM projects WHERE slug = ?", (slug,)).fetchone():
+            flash("Un projet avec un titre similaire existe déjà. Modifie son titre ou actualise-le.", "error")
+            return redirect(url_for("project_library"))
+        database.execute(
+            """INSERT INTO projects
+               (slug, title, summary, description, skills, keywords, highlights,
+                public_url, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                slug, title, summary, description, skills, keywords, highlights,
+                public_url, now, now,
+            ),
+        )
+        flash("Projet ajouté à ta bibliothèque de candidature.", "success")
+    database.commit()
+    return redirect(url_for("project_library"))
+
+
+@app.post("/applications/<int:application_id>/projects")
+def save_application_projects(application_id):
+    application = get_application(application_id)
+    if application is None:
+        flash("Cette candidature n'existe pas.", "error")
+        return redirect(url_for("index"))
+    error = save_application_project_selection(
+        application,
+        request.form.getlist("project_ids"),
+        request.form.get("primary_project_id"),
+    )
+    if error:
+        flash(error, "error")
+        return redirect(url_for("index", selected=application_id))
+    selected_ids = {
+        project["id"] for project in selected_application_projects(application_id)
+    }
+    flash(
+        f"{len(selected_ids)} projet(s) retenu(s) pour le CV et la lettre.",
+        "success",
+    )
+    return redirect(url_for("index", selected=application_id))
 
 
 @app.post("/profile")
@@ -2259,11 +2848,29 @@ def generate_draft(application_id):
             "error",
         )
         return redirect(url_for("index", selected=application_id))
+    if request.form.get("project_selection_submitted") == "1":
+        error = save_application_project_selection(
+            application,
+            request.form.getlist("project_ids"),
+            request.form.get("primary_project_id"),
+        )
+        if error:
+            flash(error, "error")
+            return redirect(url_for("index", selected=application_id))
     language = resolve_language(request.form.get("language", "auto"), application)
     try:
         max_tokens = 900 if kind == "cv" else 600
-        examples = () if provider == "copilot" or language == "en" else get_style_examples()
-        prompt = build_prompt(kind, profile, application, reference_documents, examples, language)
+        examples = () if provider == "copilot" else get_style_examples()
+        selected_projects = selected_application_projects(application_id)
+        prompt = build_prompt(
+            kind,
+            profile,
+            application,
+            reference_documents,
+            examples,
+            language,
+            selected_projects,
+        )
         if provider == "copilot":
             draft = generate_with_copilot(prompt, max_tokens)
         elif select_style_examples(kind, examples):
@@ -2271,6 +2878,13 @@ def generate_draft(application_id):
         else:
             draft = generate_with_ollama(prompt, max_tokens)
         draft = clean_cv_draft(draft) if kind == "cv" else clean_letter_draft(draft)
+        if kind == "cv":
+            draft = sort_cv_experience_sections(draft)
+            draft = inject_selected_projects(draft, selected_projects)
+        else:
+            draft = inject_primary_project_in_letter(
+                draft, selected_projects, language
+            )
         if not draft.strip():
             if provider == "copilot":
                 raise RuntimeError(

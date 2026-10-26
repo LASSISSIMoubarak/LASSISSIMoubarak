@@ -13,6 +13,7 @@
     </a>
     <div class="top-actions">
       <span class="local-state {% if ollama.ready %}is-ready{% else %}is-offline{% endif %}"><span class="state-dot"></span>{% if ollama.ready %}Qwen local prêt{% else %}Qwen indisponible{% endif %}</span>
+      <a class="button button-outline" href="{{ url_for('project_library') }}" title="Gérer les projets utilisés pour personnaliser les candidatures">Mes projets · {{ project_catalog_count }}</a>
       <a class="button button-outline" href="{{ url_for('export_xlsx') }}" title="Exporter les candidatures en Excel">Export Excel</a>
     </div>
   </header>
@@ -158,7 +159,39 @@
           <div class="detail-title-row"><div><p class="eyebrow">Dossier · {{ selected.company }}</p><h2>{{ selected.position }}</h2><p class="muted">{{ selected.location or 'Lieu non précisé' }}{% if selected.url %}<span class="detail-separator">·</span><a href="{{ selected.url }}" target="_blank" rel="noopener noreferrer">Voir l’offre ↗</a>{% endif %}</p></div><span class="status-pill status-large">{{ selected.status }}</span>
             <form method="post" action="{{ url_for('delete_application', application_id=selected.id) }}" onsubmit="return confirm('Supprimer définitivement cette offre et ses brouillons ?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-button" type="submit">Supprimer l’offre</button></form></div>
           {% if selected.job_description %}<details class="description-block"><summary>Description de l’offre</summary><p>{{ selected.job_description }}</p></details>{% endif %}
-          <div class="draft-heading"><div><p class="eyebrow">Qwen local ou GitHub Copilot</p><h3>Préparer les documents</h3></div></div>
+            <section class="project-selection" aria-labelledby="project-selection-title">
+              <div class="section-heading"><div><p class="eyebrow">Preuves de ton parcours</p><h3 id="project-selection-title">Projets à présenter pour cette offre</h3></div>
+                <a class="open-link" href="{{ url_for('project_library') }}">Gérer ma bibliothèque ↗</a>
+              </div>
+              <p class="muted tiny">Coche jusqu’à deux projets. Choisis aussi celui qui sera mis en avant dans le CV. Ta sélection actuelle sera enregistrée automatiquement quand tu génères un document.</p>
+              {% if project_choices %}
+                <form method="post" action="{{ url_for('save_application_projects', application_id=selected.id) }}" class="project-choice-list">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  {% for project in project_choices %}
+                    <div class="project-choice">
+                      <label class="project-choice-select" for="project-select-{{ project.id }}">
+                        <input id="project-select-{{ project.id }}" type="checkbox" name="project_ids" value="{{ project.id }}" {% if project.is_selected %}checked{% endif %}>
+                      </label>
+                      <span class="project-choice-copy">
+                        <strong>{{ project.title }}</strong>
+                        <span class="muted">{{ project.summary }}</span>
+                        <span class="project-match">{% if project.match_score %}Pertinence {{ project.match_score }}/100 · {{ project.match_reason }}{% else %}Pas de correspondance directe détectée{% endif %}</span>
+                        {% if project.public_url %}<span class="project-public-link">Lien public : {{ project.public_url }}</span>{% else %}<span class="muted tiny">Lien public à ajouter après publication du projet.</span>{% endif %}
+                      </span>
+                      <label class="project-primary" for="project-primary-{{ project.id }}">
+                        <input id="project-primary-{{ project.id }}" type="radio" name="primary_project_id" value="{{ project.id }}" {% if project.is_primary %}checked{% endif %}>
+                        CV
+                      </label>
+                      <a class="project-preview-link" href="{{ url_for('project_detail', slug=project.slug) }}">Fiche ↗</a>
+                    </div>
+                  {% endfor %}
+                  <div class="form-end"><span class="muted tiny">Les projets personnels restent distincts des expériences salariées.</span><button class="button button-outline" type="submit">Enregistrer la sélection</button></div>
+                </form>
+              {% else %}
+                <p class="muted">Ajoute tes premiers projets dans la bibliothèque pour pouvoir les rapprocher des offres.</p>
+              {% endif %}
+            </section>
+            <div class="draft-heading"><div><p class="eyebrow">Qwen local ou GitHub Copilot</p><h3>Préparer les documents</h3></div></div>
           <div class="prereq-status" aria-live="polite">
             <span class="{% if has_resume %}prereq-ok{% else %}prereq-missing{% endif %}">CV de référence {% if has_resume %}enregistré{% else %}à renseigner dans le profil{% endif %}</span>
             <span class="{% if has_job_description %}prereq-ok{% else %}prereq-missing{% endif %}">Description de l’offre {% if has_job_description %}ajoutée{% else %}à coller dans l’offre{% endif %}</span>
@@ -222,8 +255,75 @@
     </main>
   </div>
   <script>
+    const projectSelectionForm = document.querySelector(".project-choice-list");
+    if (projectSelectionForm) {
+      const projectCheckboxes = Array.from(
+        projectSelectionForm.querySelectorAll("input[name='project_ids']")
+      );
+      const primaryRadios = Array.from(
+        projectSelectionForm.querySelectorAll("input[name='primary_project_id']")
+      );
+      const checkedProjects = () => projectCheckboxes.filter((input) => input.checked);
+      const selectPrimary = (projectId) => {
+        primaryRadios.forEach((radio) => {
+          radio.checked = radio.value === projectId;
+        });
+      };
+      const updatePrimaryAvailability = () => {
+        primaryRadios.forEach((radio) => {
+          radio.disabled = !projectCheckboxes.some(
+            (checkbox) => checkbox.value === radio.value && checkbox.checked
+          );
+        });
+      };
+      if (!primaryRadios.some((radio) => radio.checked && checkedProjects().some((box) => box.value === radio.value))) {
+        const firstChecked = checkedProjects()[0];
+        if (firstChecked) selectPrimary(firstChecked.value);
+      }
+      updatePrimaryAvailability();
+      projectCheckboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          const primary = primaryRadios.find((radio) => radio.checked);
+          if (checkbox.checked) {
+            selectPrimary(checkbox.value);
+          } else if (primary && primary.value === checkbox.value) {
+            const firstChecked = checkedProjects()[0];
+            selectPrimary(firstChecked ? firstChecked.value : "");
+          }
+          updatePrimaryAvailability();
+        });
+      });
+      projectSelectionForm.addEventListener("submit", (event) => {
+        if (checkedProjects().length > 2) {
+          event.preventDefault();
+          window.alert("Sélectionne au maximum deux projets.");
+        }
+      });
+    }
     document.querySelectorAll(".generation-form").forEach((form) => {
       form.addEventListener("submit", () => {
+        if (projectSelectionForm) {
+          const marker = document.createElement("input");
+          marker.type = "hidden";
+          marker.name = "project_selection_submitted";
+          marker.value = "1";
+          form.appendChild(marker);
+          projectSelectionForm.querySelectorAll("input[name='project_ids']:checked").forEach((checkbox) => {
+            const selected = document.createElement("input");
+            selected.type = "hidden";
+            selected.name = "project_ids";
+            selected.value = checkbox.value;
+            form.appendChild(selected);
+          });
+          const primary = projectSelectionForm.querySelector("input[name='primary_project_id']:checked");
+          if (primary) {
+            const selectedPrimary = document.createElement("input");
+            selectedPrimary.type = "hidden";
+            selectedPrimary.name = "primary_project_id";
+            selectedPrimary.value = primary.value;
+            form.appendChild(selectedPrimary);
+          }
+        }
         const button = form.querySelector("button[type='submit']");
         button.disabled = true;
         button.textContent = form.querySelector("select[name='provider']").value === "copilot"

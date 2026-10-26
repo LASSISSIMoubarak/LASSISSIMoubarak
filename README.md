@@ -32,6 +32,9 @@ possible, la procédure d'exécution.
 
 ### Statistiques, R et données
 
+- [Tableau de bord BI — transactions en Inde](<./Projet BI/README.md>) —
+  rapport Power BI pour explorer les transactions par secteur d'activité,
+  genre, année, âge et État, avec captures d'écran.
 - [Biostatistiques](<./Biostatistiques/README.md>) — challenge QRT, inférence de
   réseaux et travaux de génétique statistique.
 - [Statistiques](<./Statistiques/README.md>) — programmation concurrente, Big Data,
@@ -56,7 +59,15 @@ possible, la procédure d'exécution.
   de CV et de lettres adaptés à mon profil et à mes expériences. J’automatise
   ainsi une partie de la préparation de mes dossiers, tout en gardant la main
   pour relire, modifier et valider chaque document. Avec Ollama, la génération
-  peut se faire localement sur mon ordinateur.
+  peut se faire localement sur mon ordinateur. Une bibliothèque de projets
+  personnels suggère jusqu’à deux réalisations pertinentes par offre et les
+  intègre au CV. Le projet principal peut être choisi explicitement ; la
+  sélection est conservée au lancement de la génération. Les liens publics
+  renseignés sont cliquables dans les exports.
+  Les fiches locales restent privées et les suggestions lexicales doivent être
+  vérifiées avant chaque candidature. Qwen peut aussi s'appuyer sur le dernier
+  exemple validé du même type (CV ou lettre), conservé localement, pour guider
+  la structure et le ton sans reprendre les faits d'une autre candidature.
 
 ## Contact
 

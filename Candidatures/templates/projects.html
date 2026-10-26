@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mes projets · Cap Carrière</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}" aria-label="Cap Carrière, accueil">
+      <span class="brand-mark">CC</span><span>cap<span class="brand-light">/</span>carrière</span>
+    </a>
+    <div class="top-actions">
+      <a class="button button-outline" href="{{ url_for('index') }}">Retour aux candidatures</a>
+    </div>
+  </header>
+  <main class="workspace project-library-page">
+    <p class="eyebrow">Portfolio de compétences</p>
+    <h1>Mes projets,<br><em>mes preuves concrètes.</em></h1>
+    <p class="muted project-library-intro">
+      Cette bibliothèque aide Cap Carrière à sélectionner jusqu’à deux projets proches de chaque offre,
+      puis à les présenter dans le CV et la lettre. Vérifie et modifie chaque information avant de
+      l’utiliser. Ajoute le lien public GitHub ou portfolio après publication : sans lien, la fiche
+      ci-dessous reste privée à cette application locale.
+    </p>
+    <section class="project-library-list" aria-label="Projets enregistrés">
+      {% for project in projects %}
+        <form method="post" action="{{ url_for('save_project') }}" class="project-editor">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="project_id" value="{{ project.id }}">
+          <h3>{{ project.title }}</h3>
+          <label>Titre du projet<input name="title" maxlength="180" required value="{{ project.title }}"></label>
+          <label>Résumé<input name="summary" maxlength="500" required value="{{ project.summary }}"></label>
+          <label>Description et périmètre<textarea name="description" maxlength="5000" rows="5" required>{{ project.description }}</textarea></label>
+          <label>Technologies et méthodes<textarea name="skills" maxlength="1000" rows="2">{{ project.skills }}</textarea></label>
+          <label>Mots-clés pour le rapprochement avec les offres<textarea name="keywords" maxlength="1500" rows="2">{{ project.keywords }}</textarea><span class="muted tiny">Sépare les mots-clés par des virgules. Tu peux saisir les équivalents en français et anglais.</span></label>
+          <label>Résultats et éléments vérifiables<textarea name="highlights" maxlength="2000" rows="3">{{ project.highlights }}</textarea><span class="muted tiny">Un résultat par ligne. N’ajoute que des résultats que tu peux expliquer et justifier.</span></label>
+          <label>Lien public du projet<input name="public_url" type="url" value="{{ project.public_url }}" placeholder="À renseigner après publication sur GitHub ou ton portfolio"></label>
+          <div class="project-detail-actions">
+            <a class="button button-outline" href="{{ url_for('project_detail', slug=project.slug) }}">Voir la fiche locale</a>
+            <button class="button button-dark" type="submit">Enregistrer ce projet</button>
+          </div>
+        </form>
+      {% endfor %}
+    </section>
+    <section class="project-editor project-add-form">
+      <h2>Ajouter un autre projet</h2>
+      <form method="post" action="{{ url_for('save_project') }}" class="profile-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Titre<input name="title" maxlength="180" required placeholder="Nom du projet"></label>
+        <label>Résumé<input name="summary" maxlength="500" required placeholder="En une phrase"></label>
+        <label>Description et périmètre<textarea name="description" maxlength="5000" rows="4" required></textarea></label>
+        <label>Technologies et méthodes<textarea name="skills" maxlength="1000" rows="2"></textarea></label>
+        <label>Mots-clés, séparés par des virgules<textarea name="keywords" maxlength="1500" rows="2"></textarea></label>
+        <label>Résultats vérifiables, un par ligne<textarea name="highlights" maxlength="2000" rows="3"></textarea></label>
+        <label>Lien public du projet<input name="public_url" type="url" placeholder="https://github.com/..."></label>
+        <button class="button button-accent" type="submit">Ajouter à la bibliothèque</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

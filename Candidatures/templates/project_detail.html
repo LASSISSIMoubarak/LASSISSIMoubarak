@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ project.title }} · Cap Carrière</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}" aria-label="Cap Carrière, accueil">
+      <span class="brand-mark">CC</span><span>cap<span class="brand-light">/</span>carrière</span>
+    </a>
+    <div class="top-actions">
+      <a class="button button-outline" href="{{ url_for('project_library') }}">Bibliothèque de projets</a>
+    </div>
+  </header>
+  <main class="project-detail-card">
+    <p class="eyebrow">Projet personnel · fiche de présentation</p>
+    <h1>{{ project.title }}</h1>
+    <p><strong>{{ project.summary }}</strong></p>
+    <h2>Démarche et périmètre</h2>
+    <p>{{ project.description }}</p>
+    {% if project.skills %}
+      <h2>Technologies et méthodes</h2>
+      <p>{{ project.skills }}</p>
+    {% endif %}
+    {% if highlights %}
+      <h2>Résultats et éléments documentés</h2>
+      <ul>{% for item in highlights %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if project.public_url %}
+      <div class="project-detail-actions">
+        <a class="button button-accent" href="{{ project.public_url }}" target="_blank" rel="noopener noreferrer">Voir le projet publié ↗</a>
+      </div>
+    {% else %}
+      <div class="project-detail-note">Cette fiche est affichée dans l’application locale et n’est pas encore accessible à un recruteur. Publie le projet, puis ajoute ici son lien public depuis la bibliothèque de projets.</div>
+    {% endif %}
+    <div class="project-detail-actions">
+      <a class="button button-outline" href="{{ url_for('project_library') }}">Modifier la fiche</a>
+      <a class="button button-outline" href="{{ url_for('index') }}">Retour aux candidatures</a>
+    </div>
+  </main>
+</body>
+</html>
