@@ -90,7 +90,7 @@
     </aside>
     <main class="workspace">
       <section class="welcome-row">
-        <div><p class="eyebrow">Espace personnel · {{ counts.total }} dossier{% if counts.total != 1 %}s{% endif %}</p><h1>Ta recherche,<br><em>bien en mouvement.</em></h1></div>
+        <div><p class="eyebrow">Espace personnel · {{ counts.total }} dossier{% if counts.total != 1 %}s{% endif %}</p><h1>Recherche,<br><em>bien en mouvement.</em></h1></div>
         <div class="metrics" aria-label="Résumé des candidatures"><div><strong>{{ counts.total }}</strong><span>suivies</span></div><div><strong>{{ counts.sent }}</strong><span>envoyées</span></div><div><strong>{{ counts.interviews }}</strong><span>entretiens</span></div></div>
       </section>
       {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash-stack" role="status">{% for category, message in messages %}<p class="flash flash-{{ category }}">{{ message }}</p>{% endfor %}</div>{% endif %}{% endwith %}

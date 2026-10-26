@@ -17,6 +17,9 @@ possible, la procédure d'exécution.
   journaux d’expériences restent locaux et ne sont pas versionnés.
 - [MLOps - prédiction du cancer du sein](<./mlops/mlops_breast_cancer/README.md>) —
   pipeline reproductible de préparation des données, entraînement et prédiction.
+- [SolarWatch — surveillance photovoltaïque](<./SolarWatch/README.md>) —
+  détection interprétable et hiérarchisation de sous-performances d'onduleurs
+  sur des données Kaggle, avec résultats reproductibles et limites documentées.
 - [Machines et Deep Learning](<./Machines and Deep Learning/README.md>) — notebooks
   d'apprentissage automatique, réseaux de neurones et traitement de données.
 - [NLP](<./NLP/README.md>) — travaux pratiques et notebooks autour de la
