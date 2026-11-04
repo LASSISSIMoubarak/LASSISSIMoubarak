@@ -133,6 +133,10 @@ tr.row-selected td { background:#f0f5ef; }
 .prereq-status span { padding:5px 8px; border-radius:2px; font-size:9px; font-weight:700; }
 .prereq-ok { background:var(--pine-soft); color:#345c4d; }
 .prereq-missing { background:#f8f2df; color:#806a2d; }
+.keyword-gap { margin:16px 0; }
+.keyword-chip { display:inline-block; padding:2px 8px; border-radius:10px; margin:2px 0; }
+.keyword-missing { list-style:none; padding:0; margin:0; }
+.keyword-missing li { margin:4px 0; }
 .draft-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .draft-panel { min-width:0; padding:17px; border:1px solid var(--line); background:var(--white); }
 .draft-panel-heading { display:flex; gap:10px; align-items:flex-start; margin-bottom:14px; }

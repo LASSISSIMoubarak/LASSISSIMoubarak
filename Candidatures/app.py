@@ -39,16 +39,31 @@ from reportlab.lib.units import cm
 from reportlab.platypus import HRFlowable, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer
 from xml.sax.saxutils import escape
 
+from domains import DOMAINS, build_spontaneous_description, domain_choices, is_spontaneous
 import job_import
+from keyword_gap import analyze_keyword_gap, ungrounded_labels
 from project_catalog import PROJECT_SEEDS, project_slug, rank_projects
 
 
-MODEL_NAME = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
-OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "900"))
-COPILOT_TIMEOUT = int(os.environ.get("COPILOT_TIMEOUT", "300"))
-MAX_REFERENCE_CONTEXT_CHARS = 12000
-MAX_STYLE_EXAMPLES = 1
-MAX_STYLE_EXAMPLE_CHARS = 1800
+# --- AVANT ---
+# MODEL_NAME = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
+# OLLAMA_CONTEXT = 4096
+# OLLAMA_CONTEXT_WITH_EXAMPLES = 6144
+
+# --- CONFIGURATION DE SECOURS POUR PETITE RAM ---
+MODEL_NAME = os.environ.get("OLLAMA_MODEL", "qwen2.5:14b")
+OLLAMA_BASE_URL = os.environ.get(
+    "OLLAMA_BASE_URL", "http://127.0.0.1:11434"
+).rstrip("/")
+OLLAMA_TIMEOUT = 600
+COPILOT_TIMEOUT = 180
+MAX_REFERENCE_CONTEXT_CHARS = 10000 # On réduit légèrement pour accélérer le transit
+MAX_STYLE_EXAMPLES = 2
+MAX_STYLE_EXAMPLE_CHARS = 1500
+MAX_FREE_API_STYLE_EXAMPLES = 3
+MAX_FREE_API_STYLE_EXAMPLE_CHARS = 2500
+
+# Fenêtre de contexte idéale pour un traitement distant fluide
 OLLAMA_CONTEXT = 4096
 OLLAMA_CONTEXT_WITH_EXAMPLES = 6144
 MAX_LINKS_PER_IMPORT = 20
@@ -417,17 +432,21 @@ def get_style_examples():
     ).fetchall()
 
 
-def select_style_examples(kind, examples):
-    selected = [item for item in examples if item["kind"] == kind][:MAX_STYLE_EXAMPLES]
+def select_style_examples(
+    kind, examples, limit=MAX_STYLE_EXAMPLES, max_chars=MAX_STYLE_EXAMPLE_CHARS
+):
+    selected = [item for item in examples if item["kind"] == kind][:limit]
     return [
-        {"label": item["label"], "content": item["content"][:MAX_STYLE_EXAMPLE_CHARS].rsplit("\n", 1)[0]
-         if len(item["content"]) > MAX_STYLE_EXAMPLE_CHARS else item["content"]}
+        {"label": item["label"], "content": item["content"][:max_chars].rsplit("\n", 1)[0]
+         if len(item["content"]) > max_chars else item["content"]}
         for item in selected
     ]
 
 
-def build_examples_context(kind, examples):
-    chosen = select_style_examples(kind, examples)
+def build_examples_context(
+    kind, examples, limit=MAX_STYLE_EXAMPLES, max_chars=MAX_STYLE_EXAMPLE_CHARS
+):
+    chosen = select_style_examples(kind, examples, limit, max_chars)
     if not chosen:
         return ""
     label = "CV" if kind == "cv" else "lettres de motivation"
@@ -437,8 +456,11 @@ def build_examples_context(kind, examples):
     ]
     return (
         f"\n\nEXEMPLES DE {label.upper()} VALIDÉS (modèles de qualité)\n"
-        "Prends l'exemple comme gabarit : reprends l'organisation des rubriques ou des paragraphes, "
-        "leur ordre, le niveau de détail, le ton et une longueur comparable. "
+        "Pour un CV, reproduis au plus près la structure de l'exemple : rubriques, ordre, présentation "
+        "des expériences, puces et lignes de compétences. Pour tous les documents, reprends le niveau de "
+        "détail, le ton et une longueur comparable. Respecte strictement la langue demandée pour l'ensemble "
+        "du document ; seuls les noms propres, intitulés officiels et noms d'outils peuvent rester dans "
+        "leur langue d'origine. "
         "Ils concernent d'autres offres : n'en reprends aucune entreprise cible, aucune phrase telle quelle "
         "et aucun fait, chiffre ou outil absent des sources de référence du candidat. "
         "Pour les faits, les sources du candidat et l'offre actuelle priment toujours sur l'exemple.\n\n"
@@ -560,12 +582,28 @@ def build_reference_context(profile, reference_documents):
     return result
 
 
+# def ollama_status():
+#     try:
+#         # On passe sur localhost et on augmente le timeout à 5 secondes pour laisser Windows répondre
+#         with urlopen("https://afraid-tools-wear.loca.lt", timeout=5) as response:
+#             models = json.loads(response.read().decode("utf-8")).get("models", [])
+#         return {"ready": True, "model": MODEL_NAME} # Force le statut prêt si le serveur répond
+#     except Exception as error:
+#         app.logger.warning("Ollama status check failed: %s", error)
+#         return {"ready": False, "model": MODEL_NAME}
+
 def ollama_status():
     try:
-        with urlopen("http://127.0.0.1:11434/api/tags", timeout=1) as response:
+        req = Request(
+            f"{OLLAMA_BASE_URL}/api/tags",
+            headers={"Bypass-Tunnel-Reminder": "true"},
+        )
+        with urlopen(req, timeout=5) as response:
             models = json.loads(response.read().decode("utf-8")).get("models", [])
-        return {"ready": any(model.get("name") == MODEL_NAME for model in models), "model": MODEL_NAME}
-    except (OSError, ValueError, TimeoutError):
+        ready = any(model.get("name") == MODEL_NAME for model in models)
+        return {"ready": ready, "model": MODEL_NAME}
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError) as error:
+        app.logger.warning("Ollama status check failed: %s", error)
         return {"ready": False, "model": MODEL_NAME}
 
 
@@ -610,26 +648,43 @@ def english_task(kind):
             "ATS-friendly and faithful to the source. Use the offer's requirements only to choose and order "
             "facts already present in the source resume: a requirement is never proof of experience. "
             "NEVER invent or extrapolate a tool, task, result, figure, degree, date, level, employer or "
-            "responsibility. Do not call the candidate an expert unless the source says so. Keep names, job "
-            "titles and dates exactly as in the source and translate the descriptions into natural English. "
+            "responsibility. Do not call the candidate an expert unless the source says so. Write all headings, "
+            "job titles, degree titles and descriptive text in English; keep proper names, institution and "
+            "employer names, tools, and dates as documented. Translate French role and degree titles accurately. "
             "Do NOT include the name, e-mail, phone, address, city or a header job title: the application adds "
             "them. Do not add 'Name:', 'Email:' or 'Location:' lines. "
+            "Candidate-confirmed facts and corrections in the current profile take precedence over older "
+            "uploaded reference CVs. Use older documents only to supplement facts that do not conflict. If a "
+            "conflict remains unresolved, do not guess or silently combine the versions. "
             "Return only the resume, with no introduction or comment, using these headings when documented: "
             "PROFILE, PROFESSIONAL EXPERIENCE, PROJECTS, EDUCATION, CERTIFICATIONS and SOFTWARE. "
             "Do NOT write a KEY SKILLS, TECHNICAL SKILLS or SOFT SKILLS section: skills must appear inside each "
-            "experience. The application adds LANGUAGES and HOBBIES from the profile when provided. "
+            "experience. Do NOT write a LANGUAGES section: the application adds the candidate's languages "
+            "from the profile in English, including translated language names and proficiency labels. "
+            "The application adds HOBBIES from the profile when provided. "
             "Think like the recruiter for this role in a very competitive market: identify what they would look "
             "for first in the offer (missions, tools, keywords) and surface the matching elements from all "
             "reference sources, merging common skills without repeating them and reusing the offer's wording "
             "when a source supports it. Do not attach a global skill to a job: the tools listed for an "
             "experience must be explicitly linked to that experience in at least one source. "
-            "The versions provided are complementary; if their dates or facts conflict, do not pick arbitrarily "
-            "and do not invent a correction. "
+            "ATS optimisation: the first profile sentence must name the exact job title of the offer when the "
+            "candidate's documented background supports it, and every keyword, tool, method and acronym of the "
+            "offer that is documented in the sources must appear at least once, in the offer's exact spelling "
+            "(write both forms, e.g. 'Extract, Transform, Load (ETL)', when the offer uses one of them). Place "
+            "the offer's most important requirements first. Never add a keyword the sources do not support: "
+            "keywords missing from the sources are simply left out. Use standard headings and plain text only. "
             "Profile: 2 factual sentences maximum, focused on the target role, no superlatives. "
             "One page maximum: select at most the 3 experiences most relevant to the offer, without dropping a "
             "key experience in favour of a less relevant one. For each experience keep at most 2 short, highly "
             "significant bullet points starting with an action verb, ordered by relevance. Do not invent tasks "
-            "and do not repeat the same idea. Quantify (volumes, percentages, deadlines, number of users) ONLY "
+            "and do not repeat the same idea. Keep each role's title, employer and documented date range together "
+            "at the start of that experience, before its bullets; never place an experience date in Projects or "
+            "Education. Use past-tense action verbs for roles that ended before today, and present tense only "
+            "for a role that is still ongoing. Do not omit a verified skill explicitly requested by the offer "
+            "(for example, Excel VBA when documented for that role), and never transfer a tool between employers. "
+            "For ARACNE or inferred regulatory interactions, describe network reconstruction or direct "
+            "interactions; do not claim causality unless the source explicitly establishes it. Quantify "
+            "(volumes, percentages, deadlines, number of users) ONLY "
             "with figures present in the source or in the verified achievements; without a figure, describe the "
             "mission without claiming a result. End each job with a single line "
             "'Skills: tool1, tool2, tool3' (5 maximum) listing the tools and methods actually used in that job, "
@@ -642,45 +697,39 @@ def english_task(kind):
             "Projects: include only the candidate's selected, documented personal projects below; include at "
             "most 2 when relevant, never present them as employment, and copy a public project URL exactly "
             "when provided. Do not invent a project or link. "
-            "Education: keep the degrees from the source resume, one per entry, with degree, institution and "
+            "Education: translate degree titles into English and keep each degree from the source resume, one per "
+            "entry, with degree, institution and "
             "dates on separate lines. Never merge several degrees on one line and do not separate them with "
             "semicolons. Maximum 350 words. Plain text, no tables, icons or skill bars."
         )
     return degree_rule + (
         "Write a convincing, personal and natural cover letter IN ENGLISH for the target job. "
-        "Never use em or en dashes or double hyphens: rephrase with a comma, a colon or a new sentence. "
-        "The body is 170 to 220 words in 4 paragraphs of prose, with no list, numbering, subheading or dashes. "
-        "The letter already starts with 'Dear Hiring Manager,': do not produce any salutation, closing "
-        "formula, signature, address, date or subject line, because the application adds them. Finish every "
-        "sentence and the last paragraph completely. "
-        "1) Introduction: start with 'I am delighted to apply for the position of ...' (or 'I am excited "
-        "to apply...'), then give your specific motivation for the company's missions or projects, only if "
-        "the offer describes them. Avoid generic compliments and empty phrases. Never start with 'I am "
-        "writing to', 'Hello' or 'passionate'. "
-        "2) Background: present the relevant degree and the data/statistics experience when the sources "
-        "establish them. Never compute a number of years from dates: state a duration only if explicitly "
-        "given. "
-        "3) Fit: choose the 2 or 3 most important requirements of the offer and justify each with a precise "
-        "example (mission, tool or result) present in the resume or references. Use each experience and each "
-        "result only once; repeat no example, sentence or paragraph. For each requirement, explain explicitly "
-        "what this proof would let you bring to the role and its missions: link the skill, the lived example "
-        "and the expected concrete contribution. Select only the certifications whose skills match the "
-        "offer's requirements; explain how they can support your contribution, without presenting them as "
-        "professional experience and without copying diploma identifiers. Cite none if they add nothing. If a "
-        "requirement is not proven, do not claim to master it: choose a verified close skill. Cite at most 2 "
-        "experiences, only those closest to the target role, and ignore jobs unrelated to the offer. Each "
-        "employer is cited only once. "
-        "4) Conclusion: in one or two sentences, soberly highlight open-mindedness, agility, proactivity or "
-        "adaptability only if the sources justify it. The application adds the interview sentence: do not "
-        "write it. Write 'at [employer]' to place an experience. "
-        "If a selected personal project is provided, the first project is the candidate's primary choice. "
-        "Use this primary project explicitly in paragraph 3 as concrete evidence; do not omit it or substitute "
-        "another project. Describe only its documented scope and skills, relating them to the offer without "
-        "claiming expertise in an unrelated domain. Clearly call it a personal project, never employment. "
-        "Invite the recruiter to view it only when a public URL is provided, and copy that URL exactly. "
-        "Invent no fact, figure, degree, length of experience, tool, responsibility, result or company "
-        "quality. Do not claim success unless the sources prove it. Do not repeat the resume line by line "
-        "and add no thanks or closing formula."
+        "Use only English throughout the letter. Keep only proper names, official institution and employer "
+        "names, product names, and technical tool names in their documented form. Translate descriptive "
+        "project titles, role descriptions, and all ordinary phrases into natural English; never copy a "
+        "French title or sentence into the English letter. "
+        "The generated body must contain exactly 4 concise prose paragraphs and 140 to 180 words total. "
+        "This count excludes the salutation, interview sentence, closing and signature, which the application "
+        "adds separately. No bullets, headings, numbering, address, date, subject, salutation, closing formula "
+        "or signature. Finish every sentence. "
+        "When an adapted CV for this offer is provided, it is the controlling source for the letter: use only "
+        "the experiences, education, dates, tools, methods and results actually present in that CV. Do not "
+        "restore omitted details from older reference documents, embellish a CV statement, or add a new "
+        "project. The profile and reference documents may clarify a fact only when they do not conflict with "
+        "the adapted CV. If no adapted CV is provided, use only verified profile and reference facts. "
+        "Paragraph 1: name the exact role and connect your motivation to a concrete mission in the offer. "
+        "Avoid generic praise. Paragraph 2: connect only the most relevant education and experience from the "
+        "adapted CV to the role. Paragraph 3: give no more than 2 distinct, precise examples that directly "
+        "match the offer, then state the practical contribution they support. A selected personal project is "
+        "optional: mention it only if it is included in the adapted CV and directly relevant to the offer. "
+        "If mentioned, clearly call it a personal project, translate its descriptive title and details into "
+        "English, and use no result, method or tool absent from the adapted CV. Paragraph 4: give one brief, "
+        "evidence-based closing thought; do not add an interview request because the application appends it. "
+        "Use past-tense verbs for completed roles. Never calculate years of experience from dates. Do not "
+        "claim a required skill that the CV does not prove. Do not describe association, prediction or network "
+        "reconstruction as causal evidence unless the CV explicitly supports that conclusion. "
+        "Do not repeat an example or paraphrase the CV line by line. Invent no fact, metric, degree, role, "
+        "tool, responsibility, result, company quality or personal quality."
     )
 
 
@@ -692,12 +741,15 @@ def build_prompt(
     style_examples=(),
     language="fr",
     selected_projects=(),
+    style_example_limit=MAX_STYLE_EXAMPLES,
+    style_example_char_limit=MAX_STYLE_EXAMPLE_CHARS,
 ):
     profile_text = "\n".join(
         [
             f"Nom : {profile['full_name']}", f"E-mail : {profile['email']}",
             f"Telephone : {profile['phone']}", f"Localisation : {profile['location']}",
-            "Sources de reference du candidat (seules sources autorisees pour les faits personnels) :",
+            "CV principal et faits confirmés par le candidat (source prioritaire) ; "
+            "les anciens CV importés ne priment pas sur ces informations :",
             build_reference_context(profile, reference_documents),
         ]
     )
@@ -723,6 +775,17 @@ def build_prompt(
             application["job_description"][:3500],
         ]
     )
+    if is_spontaneous(application["job_description"]):
+        offer_text += (
+            "\n\nCANDIDATURE SPONTANEE : il n'existe aucune offre. Les sujets listés ci-dessus sont "
+            "seulement des attentes typiques du domaine visé, jamais des exigences d'un recruteur : ne les "
+            "reprends que s'ils sont documentés dans les sources du candidat. N'écris jamais « suite à votre "
+            "offre » ni « votre annonce », n'invente aucune information sur l'entreprise, et présente le "
+            "candidat comme intéressé par le domaine et le poste visés ; dans une lettre, remplace la mission "
+            "de l'offre par le domaine visé et la contribution concrète du candidat. "
+            "SPONTANEOUS APPLICATION: there is no job posting. Never refer to a posting and invent nothing "
+            "about the company."
+        )
     if kind == "letter":
         tailored_cv = (application["cv_draft"] or "").strip() if "cv_draft" in application.keys() else ""
         if tailored_cv:
@@ -740,98 +803,80 @@ def build_prompt(
     )
     if language == "en":
         task = english_task(kind)
+        task += (
+            "Candidate-confirmed facts and corrections in the current profile take precedence over older "
+            "uploaded reference CVs. Use older documents only to supplement facts that do not conflict. If a "
+            "conflict remains unresolved, do not guess or silently combine the versions. "
+        )
     elif kind == "cv":
-        task = degree_rule + (
-            "Tu es redacteur de CV francais pour les metiers de la data. Produis un CV cible, lisible par un ATS "
-            "et fidele a la source. N'utilise les exigences de l'offre que pour choisir et ordonner les faits "
-            "deja presents dans le CV source : une exigence n'est jamais une preuve d'experience. "
-            "INTERDICTION d'inventer ou d'extrapoler un outil, une mission, un resultat, un chiffre, une "
-            "formation, une date, un niveau, un employeur ou une responsabilite. Ne qualifie pas le candidat "
-            "d'expert si la source ne le dit pas. Conserve mot pour mot les noms, intitules et dates. "
-            "N'inclus PAS le nom, l'e-mail, le telephone, l'adresse, la ville ni un titre de poste en-tete : "
-            "l'application les ajoute. N'ajoute pas de ligne 'Nom :', 'E-mail :' ou 'Localisation :'. "
-            "Retourne uniquement le CV, sans introduction ni commentaire, avec ces rubriques si elles sont "
-            "documentees : PROFIL, EXPERIENCES PROFESSIONNELLES, PROJETS, FORMATION, CERTIFICATIONS et LOGICIELS. "
-            "N'ecris PAS de rubrique COMPETENCES CLES, COMPETENCES TECHNIQUES ou APTITUDES : "
-            "les competences doivent apparaitre dans chaque experience. L'application ajoute LANGUES et "
-            "LOISIRS depuis le profil lorsqu'ils sont renseignes. "
-            "Raisonne comme le recruteur de ce poste, dans un marche tres concurrentiel : retiens d'abord ce "
-            "qu'il chercherait en priorite dans l'offre (missions, outils, mots-cles) et fais remonter les "
-            "elements pertinents de toutes les sources de reference, en fusionnant les competences communes "
-            "sans les repeter, et en reprenant les mots de l'offre quand une source les justifie. "
-            "Ne rattache pas automatiquement une competence globale a un poste : les outils indiques pour "
-            "une experience doivent etre explicitement relies a cette experience dans au moins une source. "
-            "Les versions fournies sont complementaires ; si leurs dates ou faits se contredisent, ne choisis "
-            "pas arbitrairement et n'invente pas de correction. "
-            "Profil : 2 phrases factuelles maximum, centrees sur le poste vise, sans superlatif. "
-            "Une page maximum : selectionne au plus les 3 experiences les plus pertinentes pour l'offre, "
-            "sans supprimer une experience cle au profit d'un poste moins pertinent. Pour chaque experience, "
-            "garde au plus 2 activites courtes et hautement significatives, commencant par un verbe d'action "
-            "et classees par pertinence. N'invente pas d'activites et ne repete pas la meme idee. Quantifie (volumes, "
-            "pourcentages, delais, nombre d'utilisateurs) UNIQUEMENT avec les chiffres presents dans la "
-            "source ou dans les realisations chiffrees ; sans chiffre, decris la mission sans pretendre a "
-            "un resultat. Termine chaque poste par une ligne unique "
-            "'Competences : outil1, outil2, outil3' (5 maximum) listant les outils et methodes reellement "
-            "utilises dans ce poste, tires des sources, en priorite ceux demandes par l'offre. "
-            "Certifications : choisis au maximum 4 certifications de la liste du profil, uniquement si leur "
-            "intitule ou leurs competences correspondent aux missions et outils de cette offre. Recopie leurs "
-            "intitules exactement, sans identifiant de diplome. N'invente ni certification ni competence. "
-            "Omet cette rubrique si aucune certification ne correspond ; ne recopie jamais toute la liste. "
-            "LOGICIELS : 8 outils maximum, gardes uniquement s'ils sont demandes dans l'offre ou directement "
-            "utiles a ses missions. "
-            "Projets : utilise uniquement les projets personnels sélectionnés et documentés ci-dessous. "
-            "Ajoute au plus 2 projets s'ils sont pertinents, sous une rubrique PROJETS, et présente-les "
-            "explicitement comme des projets personnels, jamais comme un emploi. Recopie exactement tout "
-            "lien public fourni ; n'invente aucun projet ni lien. "
-            "Formation : conserve les diplomes du CV source, une formation par entree, avec "
-            "diplome, etablissement et dates sur "
-            "des lignes distinctes. Ne fusionne jamais plusieurs diplomes sur une ligne et ne les separe pas "
-            "par des points-virgules. Maximum 350 mots. Texte simple, sans tableau, icones ni jauges."
+               task = degree_rule + (
+            "Tu es un rédacteur de CV pour les métiers de la Data (Data Science, MLOps, Statistique). "
+                        "Ton objectif est de produire un CV français professionnel, synthétique et fidèle aux sources, "
+            "en imitant la structure rigoureuse des meilleurs modèles du marché. "
+            "RÈGLES DE STRUCTURE ABSOLUES :\n"
+            "1. Ne génère qu'UNE SEULE rubrique PROFIL. Elle doit contenir un résumé professionnel factuel de 2 phrases maximum, "
+                        "centré sur le poste visé et sur les compétences documentées dans les sources (modélisation statistique, MLOps, etc.). "
+                        "N'écris jamais « expert », « expertise » ni aucun superlatif, sauf si la source l'écrit. "
+                        "Ne calcule ni n'invente jamais un nombre d'années d'expérience (pas de « 3+ ans »), sauf s'il est écrit tel quel dans la source.\n"
+            "2. Dans la rubrique EXPERIENCES PROFESSIONNELLES, intègre systématiquement pour chaque poste les aspects d'industrialisation "
+            "et de production (ex: Docker, Azure DevOps, MLOps, SQL, pipelines de données, Power Automate) si les sources les mentionnent. "
+            "Chaque expérience doit se terminer par une ligne unique au format exact : 'Compétences : outil1, outil2, outil3'.\n"
+            "Garde l'intitulé, l'employeur et les dates documentées ensemble au début de chaque expérience, avant les puces ; "
+            "ne place jamais les dates d'une expérience dans une autre rubrique. Emploie le passé pour les postes terminés "
+            "et le présent uniquement pour un poste encore en cours. N'omets pas une compétence vérifiée que l'offre demande "
+            "(par exemple Excel VBA si cette compétence est documentée pour le poste concerné), et ne transfère jamais un outil "
+            "d'un employeur à un autre. Pour ARACNE ou les interactions de réseau inférées, parle de reconstruction de réseau "
+            "ou d'interactions directes ; ne prétends pas établir une causalité sans preuve explicite dans la source.\n"
+            "3. Ne crée JAMAIS de sous-rubriques redondantes ou d'introductions bavardes. "
+            "4. Écris TOUT le CV en français : traduis les intitulés de diplômes (« Master's degree in X » devient « Master X ») "
+            "et les descriptions, sans mélanger l'anglais, sauf pour les noms propres et les outils. "
+            "Ne génère pas de rubrique LANGUES : l'application l'ajoute depuis le profil en français. "
+            "Ne répète jamais la même compétence ou la même idée dans une expérience ou entre deux expériences.\n"
+            "5. OPTIMISATION ATS : la première phrase du PROFIL nomme l'intitulé exact du poste de l'offre si le parcours "
+            "documenté le permet. Chaque mot-clé, outil, méthode et acronyme de l'offre présent dans les sources doit "
+            "apparaître au moins une fois, avec l'orthographe exacte de l'offre (écris les deux formes, par ex. "
+            "« Extract, Transform, Load (ETL) », si l'offre en utilise une). Place en premier les exigences les plus "
+            "importantes de l'offre. N'ajoute jamais un mot-clé que les sources ne soutiennent pas : un mot-clé absent "
+            "des sources est simplement omis. Utilise des intitulés de rubrique standards et du texte simple.\n"
+            "CONSIGNES DE SÉCURITÉ ET ANTI-HALLUCINATION :\n"
+            "- INTERDICTION absolue d'inventer, extrapoler ou modifier une date, un diplôme, un employeur ou un chiffre.\n"
+            "- Le CV principal et les corrections confirmées par le candidat priment sur les anciens CV importés ; utilise les anciens documents uniquement pour compléter les faits non contradictoires.\n"
+            "- Utilise uniquement les faits réels tirés de ton profil ou des CV de référence fournis.\n"
+            "- N'inclus aucun en-tête avec ton nom, email, téléphone ou adresse, car l'application les injecte automatiquement.\n"
+            "- Retourne uniquement le texte du CV au format Markdown propre, sans commentaires avant ou après."
         )
+
     else:
-        task = degree_rule + (
-            "Redige une lettre de motivation convaincante, personnelle et naturelle, en francais, pour le poste vise. "
-            "N'utilise jamais de tiret long ou demi-cadratin (— ou –) ni de double tiret : reformule avec une "
-            "virgule, deux-points ou une nouvelle phrase. "
-            "Le corps fait 170 a 220 mots en 4 paragraphes de prose, sans liste, numerotation, sous-titre ni tirets. "
-            "La lettre commence deja par « Madame, Monsieur, » : ne produis ni salutation ni formule de politesse, "
-            "signature, adresse, date ou objet, car l'application les ajoute. Termine chaque phrase et le dernier "
-            "paragraphe completement. "
-            "1) Introduction : commence par « C'est avec grand plaisir que je vous adresse ma candidature au poste "
-            "de ... » (ou « C'est avec enthousiasme que... »), puis donne ta motivation specifique pour les missions "
-            "ou les projets de l'entreprise, uniquement si l'offre les decrit. Evite les compliments generiques "
-            "et les formules creuses. Ne commence jamais par « J'ai le plaisir de vous proposer », "
-            "« Je suis tres heureux », « Bonjour » ou « passionne ». "
-            "2) Parcours : presente le diplome pertinent et l'experience en data/statistiques lorsqu'ils sont "
-            "etablis par les sources. Ne calcule jamais un nombre d'annees a partir des dates : annonce une duree "
-            "uniquement si elle est explicitement indiquee. "
-            "3) Adequation : choisis les 2 ou 3 exigences les plus importantes de l'offre et justifie chacune par "
-            "un exemple precis (mission, outil ou resultat) present dans le CV ou les references. N'utilise chaque "
-            "experience et chaque resultat qu'une seule fois ; ne repete ni exemple, ni phrase, ni paragraphe. "
-            "Pour chaque exigence, explique explicitement ce que cette preuve te permettrait d'apporter au poste "
-            "et a ses missions : relie la competence, l'exemple vecu et la contribution concrete attendue. "
-            "Selectionne uniquement les certifications dont les competences correspondent aux exigences de l'offre ; "
-            "explique en quoi elles peuvent soutenir ta contribution, sans les presenter comme une experience "
-            "professionnelle et sans recopier leurs identifiants de diplome. N'en cite aucune si elles n'apportent "
-            "rien a cette offre. Si une exigence n'est "
-            "pas prouvee, ne pretend pas la maitriser : choisis une competence proche verifiee. "
-            "Cite au maximum 2 experiences, uniquement les plus proches du poste vise, et ignore les postes "
-            "peu lies a l'offre (par exemple suivi budgetaire ou autre fonction non data science). "
-            "Chaque employeur n'est cite qu'une fois. "
-            "4) Conclusion : en une ou deux phrases, souligne sobrement l'ouverture d'esprit, l'agilite, la proactivite ou l'adaptation "
-            "seulement si les sources le justifient. L'application ajoute la phrase sur l'entretien : ne la redige pas. "
-            "Ecris « aupres de [employeur] » pour situer une experience, jamais « chez [employeur] ». "
-            "Si un projet personnel sélectionné est fourni, le premier projet est le choix principal du candidat. "
-            "Utilise explicitement ce projet principal dans le paragraphe 3 comme preuve concrète ; ne l'omet "
-            "pas et ne le remplace pas par un autre projet. Décris uniquement son périmètre et ses compétences "
-            "documentés, en les reliant à l'offre sans revendiquer une expertise dans un domaine sans rapport. "
-            "Présente-le clairement comme projet personnel, jamais comme emploi. Invite le recruteur à le "
-            "consulter uniquement si un lien public est fourni, et recopie ce lien exactement. "
-            "N'invente aucun fait, chiffre, diplome, duree d'experience, outil, responsabilite, resultat ni "
-            "qualite de l'entreprise. N'affirme pas que tu as reussi quelque chose si les sources ne le prouvent. "
-            "Ne repete pas le CV ligne par ligne et n'ajoute pas de remerciement ou formule de fin."
+                task = degree_rule + (
+            "Rédige une lettre de motivation naturelle, concise et spécifiquement adaptée à l'offre, entièrement en français. "
+            "Seuls les noms propres, les noms officiels d'employeurs et d'établissements, les marques et les noms d'outils "
+            "peuvent rester dans leur forme documentée. Traduis en français les titres descriptifs de projets et toutes les "
+            "phrases descriptives ; ne copie aucune phrase anglaise du CV ou des références. "
+            "Le corps généré doit contenir exactement 4 paragraphes de prose et 140 à 180 mots au total. Ce compte exclut "
+            "l'appel, la phrase d'entretien, la formule de politesse et la signature, ajoutés séparément par l'application. "
+            "Aucune liste, aucun titre, sous-titre, numérotation, coordonnées, date, objet, appel, formule de politesse "
+            "ni signature dans ta réponse. Termine toutes les phrases. "
+            "Quand un CV adapté à cette offre est fourni, il est la source de référence prioritaire et limite les faits "
+            "utilisables : ne reprends que les expériences, formations, dates, outils, méthodes et résultats qui y figurent. "
+            "Ne réintroduis pas des détails omis en t'appuyant sur d'anciens CV, n'amplifie pas une formulation du CV et "
+            "n'ajoute pas un nouveau projet. Les autres sources peuvent seulement clarifier un fait sans contredire le CV. "
+            "En l'absence de CV adapté, utilise uniquement les informations vérifiées du profil et des CV de référence. "
+            "Paragraphe 1 : nomme le poste exact et relie ta motivation à une mission précise de l'offre, sans compliment générique. "
+            "Paragraphe 2 : relie uniquement la formation et l'expérience les plus pertinentes, présentes dans le CV, aux besoins du poste. "
+            "Paragraphe 3 : donne au maximum deux preuves distinctes et précises correspondant directement à l'offre, puis indique "
+            "la contribution concrète qu'elles permettent. Un projet personnel sélectionné est facultatif : ne le mentionne que s'il "
+            "figure dans le CV adapté et qu'il est pertinent pour l'offre. Dans ce cas, identifie-le comme projet personnel et traduis "
+            "son titre descriptif et ses détails en français ; n'ajoute aucun résultat, méthode ou outil absent du CV. "
+            "Paragraphe 4 : termine par une phrase brève, professionnelle et appuyée par les faits ; ne demande pas d'entretien, "
+            "car l'application ajoute cette phrase. Utilise le passé pour les postes terminés et ne calcule jamais une durée "
+            "d'expérience à partir de dates. Ne revendique pas une compétence exigée que le CV ne prouve pas. Ne présente pas une "
+            "association, une prédiction ou une reconstruction de réseau comme une preuve de causalité sans appui explicite du CV. "
+            "Ne répète pas un exemple et ne paraphrase pas le CV ligne par ligne. N'invente aucun fait, chiffre, diplôme, poste, "
+            "outil, responsabilité, résultat, qualité d'entreprise ou qualité personnelle."
         )
-    examples_text = build_examples_context(kind, style_examples)
+    examples_text = build_examples_context(
+        kind, style_examples, style_example_limit, style_example_char_limit
+    )
     project_section = (
         f"\n\nPROJETS PERSONNELS SÉLECTIONNÉS POUR CETTE OFFRE\n{projects_text}"
         if projects_text
@@ -848,7 +893,8 @@ def clean_cv_draft(content):
     for line in content.splitlines():
         line = re.sub(r"^\s{0,3}#{1,3}\s*", "", line.strip())
         line = line.replace("**", "").replace("__", "")
-        if not line:
+        line = normalize_dashes(line)
+        if not line or re.fullmatch(r"[-_=*\u2013\u2014\s]{1,}", line):
             continue
         if re.match(r"(?i)^(nom|name|e-?mail|telephone|t[eé]l[eé]phone|phone|localisation|location|adresse|address)\s*:", line):
             continue
@@ -860,6 +906,63 @@ def clean_cv_draft(content):
             continue
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines).strip()
+
+
+def frenchify_degree_titles(cv_content):
+    """Traduit les intitulés de diplômes restés en anglais dans un CV français."""
+    cv_content = re.sub(
+        r"(?i)\bMaster[’']s degree in\b", "Master", cv_content
+    )
+    return re.sub(r"(?i)\bBachelor[’']s degree in\b", "Licence", cv_content)
+
+
+HEDGED_PHRASE = re.compile(
+    r"\s*,?\s*\b(?:éventuellement|eventuellement|possiblement|peut-être)\b(?:[^,;.()]|\([^)]*\))*",
+    re.IGNORECASE,
+)
+
+
+def remove_hedged_phrases(text):
+    """Supprime les éléments hypothétiques (« éventuellement … ») d'une fiche projet."""
+    return HEDGED_PHRASE.sub("", text or "").strip(" ,;")
+
+
+def candidate_source_text(profile, reference_documents, projects=()):
+    return "\n".join(
+        [str(profile[key] or "") for key in profile.keys() if key != "id"]
+        + [document["content"] for document in reference_documents]
+        + [str(value or "") for project in projects for value in tuple(project)]
+    )
+
+
+def drop_ungrounded_claims(cv_content, candidate_text):
+    """Retire du profil les phrases et des lignes de compétences les outils absents des sources du candidat."""
+    if not candidate_text.strip():
+        return cv_content
+    lines, output, section = cv_content.splitlines(), [], ""
+    for line in lines:
+        key = CV_SECTION_ALIASES.get(normalize_heading(line), normalize_heading(line))
+        if key in CV_SECTION_TITLES:
+            section = key
+            output.append(line)
+            continue
+        skills_match = CV_SKILLS_LINE.match(line)
+        if skills_match:
+            kept = [
+                item for item in re.split(r",\s*", skills_match.group(1))
+                if not ungrounded_labels(item, candidate_text)
+            ]
+            if kept:
+                prefix = line[:skills_match.start(1)]
+                output.append(prefix + ", ".join(kept))
+        elif section == "PROFIL" and len(line) > 60:
+            sentences = re.split(r"(?<=[.!?])\s+", line)
+            kept = [s for s in sentences if not ungrounded_labels(s, candidate_text)]
+            if kept:
+                output.append(" ".join(kept))
+        else:
+            output.append(line)
+    return "\n".join(output)
 
 
 def inject_selected_projects(cv_content, projects):
@@ -890,15 +993,15 @@ def inject_selected_projects(cv_content, projects):
     block = ["PROJETS"]
     for project in projects[:1]:
         result = project_highlights(project)
-        project_summary = project["summary"]
-        if result:
-            project_summary = f"{project_summary} Résultat documenté : {result[0]}"
+        project_summary = remove_hedged_phrases(project["summary"])
+        if result and re.search(r"\d", result[0]):
+            project_summary = f"{project_summary} {result[0].rstrip('.')}."
         block.extend(
             [
                 normalize_dashes(project["title"]),
                 "Projet personnel",
                 f"- {project_summary}",
-                f"- Technologies : {project['skills']}",
+                f"- Technologies : {remove_hedged_phrases(project['skills'])}",
             ]
         )
         if project["public_url"]:
@@ -989,46 +1092,6 @@ def clean_letter_draft(content, profile_name=""):
     return normalize_dashes(cleaned)
 
 
-def inject_primary_project_in_letter(content, projects, language="fr"):
-    if not projects:
-        return content
-    project = projects[0]
-    title = normalize_dashes(project["title"]).strip()
-    if title.casefold() in content.casefold():
-        return content
-
-    skills = [
-        item.strip()
-        for item in re.split(r"[,;\n]", project["skills"] or "")
-        if item.strip()
-    ][:4]
-    if language == "en":
-        sentence = f'I also completed the personal project "{title}"'
-        if skills:
-            sentence += f", applying {', '.join(skills)}"
-        sentence += "."
-        if project["public_url"]:
-            sentence += f" You can view it here: {project['public_url']}."
-    else:
-        sentence = f'J’ai également mené le projet personnel « {title} »'
-        if skills:
-            sentence += f", en mettant en pratique {', '.join(skills)}"
-        sentence += "."
-        if project["public_url"]:
-            sentence += f" Vous pouvez le consulter ici : {project['public_url']}."
-
-    paragraphs = [
-        paragraph.strip()
-        for paragraph in re.split(r"\n\s*\n", content.strip())
-        if paragraph.strip()
-    ]
-    if not paragraphs:
-        return sentence
-    target = min(2, len(paragraphs) - 1)
-    paragraphs[target] = f"{sentence} {paragraphs[target]}"
-    return "\n\n".join(paragraphs)
-
-
 REFUSAL_PATTERNS = (
     "description complete", "pouvez-vous me fournir", "pouvez vous me fournir", "je dois acceder",
     "je ne peux pas", "informations supplementaires", "extrait fourni", "extrait est insuffisant",
@@ -1043,18 +1106,22 @@ def looks_like_refusal(draft):
     )
     return any(pattern in plain for pattern in REFUSAL_PATTERNS)
 
-
 def generate_with_ollama(prompt, max_tokens, num_ctx=OLLAMA_CONTEXT):
     payload = json.dumps(
         {"model": MODEL_NAME, "messages": [{"role": "user", "content": prompt}],
          "stream": False, "options": {
-             "temperature": 0.2, "num_predict": max_tokens, "num_ctx": num_ctx
+             "temperature": 0.01, "num_predict": max_tokens, "num_ctx": num_ctx
          }}
     ).encode("utf-8")
+
     for attempt in range(3):
         req = Request(
-            "http://127.0.0.1:11434/api/chat", data=payload,
-            headers={"Content-Type": "application/json"}, method="POST"
+            f"{OLLAMA_BASE_URL}/api/chat", data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Bypass-Tunnel-Reminder": "true",
+            },
+            method="POST"
         )
         try:
             with urlopen(req, timeout=OLLAMA_TIMEOUT) as response:
@@ -1072,17 +1139,78 @@ def generate_with_ollama(prompt, max_tokens, num_ctx=OLLAMA_CONTEXT):
                 continue
             if isinstance(reason, TimeoutError):
                 raise RuntimeError(
-                    "Qwen n'a pas termine dans le delai imparti. Il tourne sur CPU : "
-                    "essaie une annonce plus courte ou relance avec moins de texte."
+                    "Le modèle Ollama n'a pas terminé dans le délai imparti. "
+                    "Vérifie que le runtime Colab et le tunnel sont toujours actifs."
                 ) from error
             raise RuntimeError(
-                "Ollama ne repond pas sur 127.0.0.1:11434. Ouvre Ollama, puis reessaie. "
-                f"Detail : {reason}"
+                f"Ollama ne répond pas à {OLLAMA_BASE_URL}. "
+                "Vérifie que le serveur et son tunnel sont actifs."
             ) from error
     content = result.get("message", {}).get("content", "").strip()
     if not content:
         raise RuntimeError("Ollama n'a retourne aucun texte.")
     return content
+
+
+
+FREE_API_BASE_URL = os.environ.get("LLM_API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
+FREE_API_MODELS = [
+    model.strip()
+    for model in os.environ.get("LLM_API_MODELS", "openrouter/free").split(",")
+    if model.strip()
+]
+FREE_API_TIMEOUT = 120
+
+
+def free_api_configured():
+    return bool(os.environ.get("LLM_API_KEY"))
+
+
+def generate_with_free_api(prompt, max_tokens):
+    api_key = os.environ.get("LLM_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "Clé API absente. Définis la variable d'environnement LLM_API_KEY (clé OpenRouter gratuite)."
+        )
+    last_error = None
+    for model in FREE_API_MODELS:
+        payload = json.dumps(
+            {"model": model, "messages": [{"role": "user", "content": prompt}],
+             "max_tokens": max(max_tokens * 4, 3000), "temperature": 0.2}
+        ).encode("utf-8")
+        req = Request(
+            f"{FREE_API_BASE_URL}/chat/completions", data=payload,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            method="POST",
+        )
+        try:
+            with urlopen(req, timeout=FREE_API_TIMEOUT) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            choice = (result.get("choices") or [{}])[0]
+            content = (choice.get("message") or {}).get("content") or ""
+            finish_reason = choice.get("finish_reason")
+            if finish_reason == "length":
+                last_error = (
+                    f"{model}: réponse tronquée par la limite de tokens "
+                    f"(modèle utilisé: {result.get('model')})"
+                )
+                app.logger.warning("Échec API gratuite (%s)", last_error)
+                continue
+            if content.strip():
+                return content.strip()
+            last_error = (
+                f"{model}: réponse vide (modèle utilisé: {result.get('model')}, "
+                f"arrêt: {finish_reason}, erreur: {result.get('error')})"
+            )
+        except HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")[:200]
+            last_error = f"{model}: code {error.code} {detail}"
+            if error.code in (401, 403):
+                break
+        except (URLError, TimeoutError, ValueError) as error:
+            last_error = f"{model}: {error}"
+        app.logger.warning("Échec API gratuite (%s)", last_error)
+    raise RuntimeError(f"L'API gratuite a échoué ({last_error}). Réessaie plus tard ou change de moteur.")
 
 
 def generate_with_copilot(prompt, max_tokens):
@@ -1150,7 +1278,7 @@ def generate_with_copilot(prompt, max_tokens):
 GENDER_MARKER = re.compile(r"[\s(\[]*\b(?:H\s*/\s*F|F\s*/\s*H|M\s*/\s*F|F\s*/\s*M)(?:\s*/\s*[XN])?\b.*$", re.I)
 
 
-def cv_role_title(application, upper=True):
+def cv_role_title(application, upper=True, language=None):
     # Les titres de pages d'offres peuvent inclure l'entreprise et la plateforme après le vrai intitulé.
     role = re.sub(
         r"\s*(?:\||[-–—])\s*(?:LinkedInn?|Indeed|HelloWork|APEC)\s*$",
@@ -1175,7 +1303,34 @@ def cv_role_title(application, upper=True):
         if len(city) >= 3:
             role = re.sub(rf"[\s\-–—|,(]*\b{re.escape(city)}\b[\s)]*$", "", role, flags=re.I).strip(" -–—|,()[]")
     role = role or application["position"].strip()
+    role = single_language_role(role, language)
     return role.upper() if upper else role
+
+
+def single_language_role(role, language):
+    """Un intitulé « Titre FR/Title EN » est réduit à la version dans la langue du CV."""
+    if language is None or role.count("/") != 1:
+        return role
+    left, right = (part.strip() for part in role.split("/"))
+    if len(left.split()) < 2 or len(right.split()) < 2:
+        return role
+    french_hints = {"apprentissage", "ingenieur", "specialiste", "analyste", "responsable", "chef", "charge", "donnees", "statisticien", "scientifique"}
+
+    def french_score(text):
+        words = re.findall(r"[a-zà-ÿ']+", text.lower())
+        plain = [normalize_heading(word).lower() for word in words]
+        return (
+            sum(word in FR_WORDS for word in words)
+            + sum(word in french_hints for word in plain)
+            + bool(re.search(r"[àâçéèêëîïôûùü]", text.lower()))
+        )
+
+    left_score, right_score = french_score(left), french_score(right)
+    if bool(left_score) == bool(right_score):
+        return role
+    french_side, english_side = (left, right) if left_score else (right, left)
+    chosen = french_side if language == "fr" else english_side
+    return chosen.split(" - ")[0].strip()
 
 
 def file_slug(text, max_length=None):
@@ -1207,7 +1362,7 @@ def export_file_name(profile, application, kind, language="fr"):
 
 def cv_location(profile, language="fr"):
     place = (profile["location"] or "").strip()
-    mobility = "(Nationwide mobility)" if language == "en" else "(Mobilité Nationale)"
+    mobility = "Open to international mobility" if language == "en" else "Mobilité internationale"
     return f"{place} {mobility}" if place else mobility
 
 
@@ -1410,7 +1565,8 @@ def make_letter_docx(profile, application, content):
 
 def make_cv_docx(profile, application, content):
     content = sort_cv_experience_sections(content)
-    language = detect_language(content)
+    language = detect_cv_language(content)
+    content = replace_cv_language_section(content, profile, language)
     document = Document()
     section = document.sections[0]
     section.top_margin = Inches(0.55)
@@ -1493,7 +1649,10 @@ def pdf_styles():
 def make_pdf(profile, application, content, kind):
     if kind == "cv":
         content = sort_cv_experience_sections(content)
-    language = detect_language(content)
+        language = detect_cv_language(content)
+        content = replace_cv_language_section(content, profile, language)
+    else:
+        language = detect_language(content)
     text_labels = LETTER_TEXT[language]
     output = io.BytesIO()
     document = SimpleDocTemplate(
@@ -1562,6 +1721,8 @@ def make_pdf(profile, application, content, kind):
             ))
         elif text.startswith(("- ", "* ", "• ")):
             story.append(Paragraph("&bull; " + escape(text[2:].strip()), styles["body"]))
+        elif kind == "cv" and " | " in text and current_section in {"EXPERIENCES PROFESSIONNELLES", "PROJETS"}:
+            story.append(Paragraph(f"<b>{escape(text.replace('**', ''))}</b>", styles["body"]))
         else:
             story.append(Paragraph(escape(text.replace("**", "")), styles["body"]))
     if kind == "cv":
@@ -1612,6 +1773,54 @@ CV_DOC_HEADINGS = {
     "FORMATION", "PROJETS", "LANGUES",
     "PROFILE", "SUMMARY", "PROFESSIONAL EXPERIENCE", "WORK EXPERIENCE", "EDUCATION",
     "PROJECTS", "LANGUAGES", "KEY SKILLS",
+    "CERTIFICATIONS", "CERTIFICATION", "SOFTWARE", "TOOLS", "LOGICIELS", "OUTILS",
+    "TECHNICAL SKILLS", "COMPETENCES TECHNIQUES", "SKILLS", "HOBBIES", "LOISIRS",
+}
+LANGUAGE_NAME_TRANSLATIONS = {
+    "ALLEMAND": ("German", "Allemand"),
+    "ANGLAIS": ("English", "Anglais"),
+    "ARABE": ("Arabic", "Arabe"),
+    "CHINOIS": ("Chinese", "Chinois"),
+    "ESPAGNOL": ("Spanish", "Espagnol"),
+    "FRANCAIS": ("French", "Français"),
+    "ITALIEN": ("Italian", "Italien"),
+    "JAPONAIS": ("Japanese", "Japonais"),
+    "NEERLANDAIS": ("Dutch", "Néerlandais"),
+    "PORTUGAIS": ("Portuguese", "Portugais"),
+    "RUSSE": ("Russian", "Russe"),
+    "TURC": ("Turkish", "Turc"),
+    "GERMAN": ("German", "Allemand"),
+    "ENGLISH": ("English", "Anglais"),
+    "ARABIC": ("Arabic", "Arabe"),
+    "CHINESE": ("Chinese", "Chinois"),
+    "SPANISH": ("Spanish", "Espagnol"),
+    "FRENCH": ("French", "Français"),
+    "ITALIAN": ("Italian", "Italien"),
+    "JAPANESE": ("Japanese", "Japonais"),
+    "DUTCH": ("Dutch", "Néerlandais"),
+    "PORTUGUESE": ("Portuguese", "Portugais"),
+    "RUSSIAN": ("Russian", "Russe"),
+    "TURKISH": ("Turkish", "Turc"),
+}
+LANGUAGE_LEVEL_TRANSLATIONS = {
+    "LANGUE MATERNELLE": ("Native", "Langue maternelle"),
+    "NATIVE": ("Native", "Natif"),
+    "NATIVE SPEAKER": ("Native", "Natif"),
+    "NATIF": ("Native", "Natif"),
+    "NATIVE-LEVEL": ("Native", "Natif"),
+    "PROFESSIONAL": ("Professional", "Professionnel"),
+    "PROFESSIONNEL": ("Professional", "Professionnel"),
+    "PROFICIENCY": ("Professional", "Professionnel"),
+    "FLUENT": ("Fluent", "Courant"),
+    "COURANT": ("Fluent", "Courant"),
+    "ADVANCED": ("Advanced", "Avancé"),
+    "AVANCE": ("Advanced", "Avancé"),
+    "INTERMEDIATE": ("Intermediate", "Intermédiaire"),
+    "INTERMEDIAIRE": ("Intermediate", "Intermédiaire"),
+    "BEGINNER": ("Beginner", "Débutant"),
+    "DEBUTANT": ("Beginner", "Débutant"),
+    "BASIC": ("Basic", "Notions"),
+    "NOTIONS": ("Basic", "Notions"),
 }
 CV_MAIN_SECTIONS = [
     "PROFIL", "EXPERIENCES PROFESSIONNELLES", "PROJETS", "FORMATION", "CERTIFICATIONS",
@@ -1619,6 +1828,91 @@ CV_MAIN_SECTIONS = [
 CV_SKILL_SECTIONS = [
     "COMPETENCES CLES", "COMPETENCES TECHNIQUES", "LOGICIELS", "APTITUDES", "LANGUES",
 ]
+
+
+def localized_profile_languages(profile, language):
+    localized = []
+    language_index = 0 if language == "en" else 1
+    for entry in profile_list(profile, "languages"):
+        match = re.match(r"^(.*?)(?:\s*:\s*|\s+[–—-]\s+)(.+)$", entry)
+        name, level = (match.group(1).strip(), match.group(2).strip()) if match else (entry, "")
+        translated_name = LANGUAGE_NAME_TRANSLATIONS.get(normalize_heading(name))
+        if translated_name:
+            name = translated_name[language_index]
+        translated_level = LANGUAGE_LEVEL_TRANSLATIONS.get(normalize_heading(level))
+        if translated_level:
+            level = translated_level[language_index]
+        localized.append(f"{name}: {level}" if level else name)
+    return localized
+
+
+def cv_section_heading(line):
+    heading = line.strip().strip("*# ").rstrip(":").strip()
+    normalized = normalize_heading(heading)
+    return CV_SECTION_ALIASES.get(normalized, normalized)
+
+
+def replace_cv_language_section(content, profile, language):
+    if not content.strip():
+        return content
+    language_entries = localized_profile_languages(profile, language)
+    heading = "LANGUAGES" if language == "en" else "LANGUES"
+    lines = content.splitlines()
+    result = []
+    inserted = False
+    index = 0
+    while index < len(lines):
+        if cv_section_heading(lines[index]) != "LANGUES":
+            result.append(lines[index])
+            index += 1
+            continue
+        if not inserted and language_entries:
+            if result and result[-1].strip():
+                result.append("")
+            result.extend((heading, *language_entries))
+            inserted = True
+        index += 1
+        while index < len(lines) and cv_section_heading(lines[index]) not in CV_SECTION_TITLES:
+            index += 1
+    if language_entries and not inserted:
+        if result and result[-1].strip():
+            result.append("")
+        result.extend((heading, *language_entries))
+    return "\n".join(result).strip()
+
+
+def detect_cv_language(content):
+    lines = content.splitlines()
+    without_languages = []
+    english_headings = {
+        "EDUCATION", "PROFILE", "PROFESSIONAL EXPERIENCE", "PROJECTS", "SOFTWARE",
+        "TOOLS", "CERTIFICATIONS",
+    }
+    french_headings = {
+        "EXPERIENCES PROFESSIONNELLES", "FORMATION", "PROFIL", "PROJETS",
+        "OUTILS", "CERTIFICATIONS",
+    }
+    english_heading_count = 0
+    french_heading_count = 0
+    index = 0
+    while index < len(lines):
+        heading = normalize_heading(lines[index].strip().strip("*# ").rstrip(":").strip())
+        if cv_section_heading(lines[index]) != "LANGUES":
+            without_languages.append(lines[index])
+            english_heading_count += heading in english_headings
+            french_heading_count += heading in french_headings
+            index += 1
+            continue
+        index += 1
+        while index < len(lines) and cv_section_heading(lines[index]) not in CV_SECTION_TITLES:
+            index += 1
+    if english_heading_count > french_heading_count:
+        return "en"
+    if french_heading_count > english_heading_count:
+        return "fr"
+    return detect_language("\n".join(without_languages))
+
+
 LATEX_CV_TEMPLATE = r"""\documentclass[10pt,a4paper]{article}
 \usepackage[a4paper,margin=@@MARGIN@@cm,top=@@VMARGIN@@cm,bottom=@@VMARGIN@@cm]{geometry}
 \usepackage{fontspec}
@@ -1703,18 +1997,55 @@ def latex_itemize(items):
     return [r"\begin{cvitems}"] + rendered + [r"\end{cvitems}"]
 
 
+CV_MONTH_NAME = (
+    r"(?:jan(?:uary|vier)?|feb(?:ruary)?|f[eé]vr(?:ier)?|mar(?:ch|s)?|"
+    r"apr(?:il)?|avr(?:il)?|may|mai|jun(?:e)?|juin|jul(?:y)?|juil(?:let)?|"
+    r"aug(?:ust)?|ao[uû]t|sep(?:t(?:ember|embre)?)?|oct(?:ober|obre)?|"
+    r"nov(?:ember|embre)?|dec(?:ember)?|d[eé]c(?:embre)?)\.?"
+)
+CV_DATE_PART = rf"(?:(?:0?[1-9]|1[0-2])/\d{{4}}|\d{{4}}|{CV_MONTH_NAME}\s+\d{{4}})"
 CV_DATE_RANGE = re.compile(
-    r"(?P<date>(?:(?:0?[1-9]|1[0-2])/\d{4}|\d{4})\s*[–—-]\s*"
-    r"(?:(?:0?[1-9]|1[0-2])/\d{4}|\d{4}|present|current|en cours))$",
+    rf"(?P<date>(?:{CV_DATE_PART}|{CV_MONTH_NAME}(?=\s*[–—-]\s*{CV_MONTH_NAME}\s+\d{{4}}))\s*[–—-]\s*"
+    rf"(?:{CV_DATE_PART}|present|current|en cours))$",
     re.IGNORECASE,
 )
 
 
 def split_trailing_date(text):
+    text = re.sub(r"\s*\(\s*((?:[^()]*?))\s*\)\s*$", lambda m: " " + m.group(1) if CV_DATE_RANGE.fullmatch(m.group(1).strip()) else m.group(0), text.strip())
     match = CV_DATE_RANGE.search(text.strip())
     if not match:
         return text.strip(), ""
     return text[:match.start()].strip(" ;,-"), match.group("date").strip()
+
+
+def date_part_start_month(date_part):
+    date_part = date_part.strip().rstrip(".")
+    numeric = re.fullmatch(r"(0?[1-9]|1[0-2])/(\d{4})", date_part)
+    if numeric:
+        return int(numeric.group(2)) * 12 + int(numeric.group(1))
+    year = re.fullmatch(r"\d{4}", date_part)
+    if year:
+        return int(year.group()) * 12
+    named = re.fullmatch(r"([a-zA-ZÀ-ÿ]+)\s+(\d{4})", date_part)
+    if not named:
+        return None
+    month = normalize_heading(named.group(1)).casefold()
+    month_number = {
+        "jan": 1, "january": 1, "janvier": 1,
+        "feb": 2, "february": 2, "fevr": 2, "fevrier": 2,
+        "mar": 3, "march": 3, "mars": 3,
+        "apr": 4, "april": 4, "avr": 4, "avril": 4,
+        "may": 5, "mai": 5,
+        "jun": 6, "june": 6, "juin": 6,
+        "jul": 7, "july": 7, "juil": 7, "juillet": 7,
+        "aug": 8, "august": 8, "aout": 8,
+        "sep": 9, "sept": 9, "september": 9, "septembre": 9,
+        "oct": 10, "october": 10, "octobre": 10,
+        "nov": 11, "november": 11, "novembre": 11,
+        "dec": 12, "december": 12, "decembre": 12,
+    }.get(month)
+    return int(named.group(2)) * 12 + month_number if month_number else None
 
 
 def select_relevant_items(items, application, generated=(), limit=4):
@@ -1789,7 +2120,20 @@ CV_SKILLS_LINE = re.compile(
 )
 
 
-def latex_entries(lines, max_items=None, max_entries=None):
+def order_skills_for_offer(skills, offer_text, limit=6):
+    normalized_offer = normalize_heading(offer_text).casefold()
+
+    def in_offer(skill):
+        return bool(re.search(
+            r"(?<![a-z0-9])" + re.escape(normalize_heading(skill).casefold()) + r"(?![a-z0-9])",
+            normalized_offer,
+        ))
+
+    ranked = sorted(enumerate(skills), key=lambda pair: (not in_offer(pair[1]), pair[0]))
+    return [skill for _, skill in ranked][:limit]
+
+
+def latex_entries(lines, max_items=None, max_entries=None, max_header_chars=90, offer_text=""):
     output, header, items, skills = [], [], [], []
     rendered_entries = 0
 
@@ -1800,6 +2144,8 @@ def latex_entries(lines, max_items=None, max_entries=None):
             if render_entry:
                 title, dates = split_trailing_date(header[0])
                 organisation = header[1] if len(header) > 1 else ""
+                if dates and not organisation and " - " in title:
+                    title, organisation = (part.strip() for part in title.rsplit(" - ", 1))
                 dates = " ; ".join([dates, *header[2:]]).strip(" ;")
                 output.append(
                     rf"\cventry{{{latex_escape(title)}}}{{{latex_escape(organisation)}}}{{{latex_escape(dates)}}}"
@@ -1808,7 +2154,10 @@ def latex_entries(lines, max_items=None, max_entries=None):
         if render_entry:
             output.extend(latex_itemize(items[:max_items] if max_items is not None else items))
         if render_entry and skills:
-            output.append(rf"\cvskills{{{latex_escape(', '.join(skills))}}}")
+            ordered = order_skills_for_offer(
+                [item for group in skills for item in re.split(r",\s*", group) if item], offer_text
+            )
+            output.append(rf"\cvskills{{{latex_escape(', '.join(ordered))}}}")
         header.clear()
         items.clear()
         skills.clear()
@@ -1822,7 +2171,7 @@ def latex_entries(lines, max_items=None, max_entries=None):
         text = line[2:].strip() if is_bullet else line
         if is_bullet:
             items.append(text)
-        elif len(text) <= 90 and not text.endswith("."):
+        elif len(text) <= max_header_chars and not text.endswith("."):
             if items or skills:
                 flush()
             header.append(text)
@@ -1837,12 +2186,14 @@ def experience_start_month(header_lines):
         match = CV_DATE_RANGE.search(line)
         if not match:
             continue
-        start = re.split(r"\s*[–—-]\s*", match.group("date"), maxsplit=1)[0].strip()
-        if re.fullmatch(r"(?:0?[1-9]|1[0-2])/\d{4}", start):
-            month, year = start.split("/")
-            return int(year) * 12 + int(month)
-        if re.fullmatch(r"\d{4}", start):
-            return int(start) * 12
+        pieces = [part.strip() for part in re.split(r"\s*[–—-]\s*", match.group("date"), maxsplit=1)]
+        start, end = pieces[0], pieces[-1]
+        if not re.search(r"\d", start):
+            end_year = re.search(r"\d{4}", end)
+            start = f"{start} {end_year.group()}" if end_year else start
+        start_month = date_part_start_month(start)
+        if start_month is not None:
+            return start_month
     return None
 
 
@@ -1909,10 +2260,11 @@ def sort_cv_experience_sections(content):
 
 def latex_education_entries(lines):
     segments = [
-        segment.strip().strip(" ;")
+        segment.strip().strip(" ;|")
         for line in lines
-        for segment in line.split(";")
-        if segment.strip().strip(" ;")
+        for part in line.split(";")
+        for segment in re.split(r"\s*\|\s*", part)
+        if segment.strip().strip(" ;|")
     ]
     output = []
     pending_title = ""
@@ -1929,6 +2281,18 @@ def latex_education_entries(lines):
         pending_institution = ""
 
     for segment in segments:
+        segment = re.sub(r"^[-*•\s]+", "", segment)
+        segment = re.sub(r"(?i)^titulaire d['’]une?\s+", "", segment)
+        parenthesized = re.fullmatch(r"(?P<title>[^()]+?)\s*\((?P<inner>[^()]*)\)", segment)
+        if parenthesized:
+            parts = [part.strip() for part in parenthesized.group("inner").split(",")]
+            dates = next((p for p in parts if CV_DATE_RANGE.fullmatch(p)), "")
+            school = ", ".join(p for p in parts if p and p != dates)
+            if dates or school:
+                flush()
+                pending_title, pending_institution = parenthesized.group("title").strip(), school
+                flush(dates)
+                continue
         before_date, dates = split_trailing_date(segment)
         if dates:
             if before_date and pending_title and not pending_institution and re.search(
@@ -1972,15 +2336,22 @@ def latex_education_entries(lines):
         else:
             pending_title = segment
     flush()
-    return output
+    # Deux masters ou plus : on ne garde qu'eux, sans remonter jusqu'aux licences.
+    masters = [entry for entry in output if re.match(r"\\cventry\{(?:Titulaire d.un )?Master\b", entry, re.I)]
+    return masters if len(masters) >= 2 else output
 
 
 def make_cv_latex(profile, application, content, layout=None):
+    language = detect_cv_language(content)
+    if language == "fr":
+        content = frenchify_degree_titles(content)
     content = sort_cv_experience_sections(content)
     layout = parse_cv_layout(layout)
-    language = detect_language(content)
     section_titles = CV_SECTION_TITLES_EN if language == "en" else CV_SECTION_TITLES
     font, spacing = layout["font"], layout["spacing"]
+    offer_text = " ".join(
+        str(application[key] or "") for key in ("position", "job_description") if key in application.keys()
+    )
     sections, current = [], None
     for raw_line in clean_cv_draft(content).splitlines():
         line = raw_line.strip()
@@ -1993,6 +2364,12 @@ def make_cv_latex(profile, application, content, layout=None):
                 continue
             key = CV_SECTION_ALIASES.get(normalize_heading(part), normalize_heading(part))
             if key in CV_SECTION_TITLES:
+                if key == "PROFIL":
+                    # Un premier PROFIL réduit à un intitulé de poste est un doublon du titre.
+                    sections = [
+                        s for s in sections
+                        if not (s[0] == "PROFIL" and len(" ".join(s[1])) < 100)
+                    ]
                 current = (key, [])
                 sections.append(current)
             else:
@@ -2015,7 +2392,7 @@ def make_cv_latex(profile, application, content, layout=None):
         generated_certifications,
     )
     overrides = {
-        "LANGUES": profile_list(profile, "languages"),
+        "LANGUES": localized_profile_languages(profile, language),
         "LOISIRS": profile_list(profile, "hobbies"),
     }
     sections = [
@@ -2034,9 +2411,11 @@ def make_cv_latex(profile, application, content, layout=None):
         if key == "FORMATION":
             body.extend(latex_education_entries(lines))
         elif key == "EXPERIENCES PROFESSIONNELLES":
-            body.extend(latex_entries(lines, max_items=2, max_entries=3))
+            body.extend(latex_entries(lines, max_items=2, max_entries=3, offer_text=offer_text))
         elif key == "PROJETS":
-            body.extend(latex_entries(lines, max_items=2, max_entries=1))
+            body.extend(
+                latex_entries(lines, max_items=2, max_entries=1, max_header_chars=160, offer_text=offer_text)
+            )
         elif key == "LOGICIELS":
             tools, seen = [], set()
             for line in lines:
@@ -2090,7 +2469,7 @@ def make_cv_latex(profile, application, content, layout=None):
             contacts.append(rf"\href{{{latex_escape(link)}}}{{{label}}}")
     replacements = {
         "@@NAME@@": latex_escape(profile["full_name"].strip() or "Nom à compléter"),
-        "@@ROLE@@": latex_escape(cv_role_title(application)),
+        "@@ROLE@@": latex_escape(cv_role_title(application, language=language)),
         "@@CONTACT@@": r" \;|\; ".join(contacts),
         "@@BODY@@": "\n".join(body_parts),
         "@@MARGIN@@": str(layout["margin"]),
@@ -2231,8 +2610,14 @@ def index():
     has_resume = bool(profile["resume_source"].strip() or reference_documents)
     ollama = ollama_status()
     copilot = copilot_status()
+    keyword_gap = None
+    if selected and selected["job_description"].strip():
+        candidate_text = candidate_source_text(profile, reference_documents, get_projects())
+        keyword_gap = analyze_keyword_gap(selected["job_description"], candidate_text)
     return render_template(
         "index.html", profile=profile, applications=applications,
+        keyword_gap=keyword_gap,
+        spontaneous_domains=domain_choices(),
         reference_documents=reference_documents,
         selected=selected, statuses=STATUSES, ollama=ollama,         copilot=copilot, gmail=job_import.gmail_settings(),
         extension_token=get_extension_token(),
@@ -2481,7 +2866,7 @@ def save_style_example(application_id):
         (kind, label, content, datetime.now().isoformat(timespec="seconds")),
     )
     database.commit()
-    flash("Brouillon gardé comme exemple : Qwen s'en inspirera pour le style.", "success")
+    flash("Brouillon gardé comme exemple de style pour les modèles gratuits.", "success")
     return redirect(url_for("index", selected=application_id))
 
 
@@ -2736,13 +3121,17 @@ def add_application():
             flash("Le lien de l'offre doit commencer par http:// ou https://.", "error")
             return redirect(url_for("index"))
     now = datetime.now().isoformat(timespec="seconds")
+    job_description = request.form.get("job_description", "").strip()
+    spontaneous_domain = request.form.get("spontaneous_domain", "")
+    if not job_description and spontaneous_domain in DOMAINS:
+        job_description = build_spontaneous_description(spontaneous_domain, position)
     cursor = get_db().execute(
         """INSERT INTO applications
            (company, position, location, url, company_address, job_description, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (company, position, request.form.get("location", "").strip(),
          offer_url, request.form.get("company_address", "").strip(),
-         request.form.get("job_description", "").strip(), now, now),
+         job_description, now, now),
     )
     get_db().commit()
     flash("Offre ajoutee au suivi.", "success")
@@ -2839,12 +3228,12 @@ def generate_draft(application_id):
         )
         return redirect(url_for("index", selected=application_id))
     provider = request.form.get("provider", "ollama")
-    if provider not in {"ollama", "copilot"}:
+    if provider not in {"ollama", "copilot", "api"}:
         flash("Choisis un moteur de generation valide.", "error")
         return redirect(url_for("index", selected=application_id))
-    if provider == "copilot" and request.form.get("allow_cloud") != "yes":
+    if provider in {"copilot", "api"} and request.form.get("allow_cloud") != "yes":
         flash(
-            "Confirme l'envoi de ton CV et de l'offre à Copilot avant la génération.",
+            "Confirme l'envoi de ton CV et de l'offre au service cloud avant la génération.",
             "error",
         )
         return redirect(url_for("index", selected=application_id))
@@ -2862,6 +3251,14 @@ def generate_draft(application_id):
         max_tokens = 900 if kind == "cv" else 600
         examples = () if provider == "copilot" else get_style_examples()
         selected_projects = selected_application_projects(application_id)
+        example_limit = (
+            MAX_FREE_API_STYLE_EXAMPLES if provider == "api" else MAX_STYLE_EXAMPLES
+        )
+        example_char_limit = (
+            MAX_FREE_API_STYLE_EXAMPLE_CHARS
+            if provider == "api"
+            else MAX_STYLE_EXAMPLE_CHARS
+        )
         prompt = build_prompt(
             kind,
             profile,
@@ -2870,20 +3267,27 @@ def generate_draft(application_id):
             examples,
             language,
             selected_projects,
+            example_limit,
+            example_char_limit,
         )
         if provider == "copilot":
             draft = generate_with_copilot(prompt, max_tokens)
+        elif provider == "api":
+            draft = generate_with_free_api(prompt, max_tokens)
         elif select_style_examples(kind, examples):
             draft = generate_with_ollama(prompt, max_tokens, num_ctx=OLLAMA_CONTEXT_WITH_EXAMPLES)
         else:
             draft = generate_with_ollama(prompt, max_tokens)
         draft = clean_cv_draft(draft) if kind == "cv" else clean_letter_draft(draft)
         if kind == "cv":
+            if language == "fr":
+                draft = frenchify_degree_titles(draft)
             draft = sort_cv_experience_sections(draft)
-            draft = inject_selected_projects(draft, selected_projects)
-        else:
-            draft = inject_primary_project_in_letter(
-                draft, selected_projects, language
+            if language == "fr":
+                draft = inject_selected_projects(draft, selected_projects)
+            draft = replace_cv_language_section(draft, profile, language)
+            draft = drop_ungrounded_claims(
+                draft, candidate_source_text(profile, reference_documents, get_projects())
             )
         if not draft.strip():
             if provider == "copilot":
@@ -2963,7 +3367,8 @@ def download_draft(application_id, kind, file_format):
     if not content:
         flash("Genere d'abord ce brouillon.", "error")
         return redirect(url_for("index", selected=application_id))
-    safe_name = export_file_name(get_profile(), application, kind, detect_language(content))
+    language = detect_cv_language(content) if kind == "cv" else detect_language(content)
+    safe_name = export_file_name(get_profile(), application, kind, language)
     profile = get_profile()
     if file_format == "tex":
         source = (

@@ -160,6 +160,7 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(library.status_code, 200)
         self.assertIn("SolarWatch".encode(), library.data)
         self.assertIn("Tableau de bord Power BI".encode(), library.data)
+        self.assertIn("QuantDashboard".encode(), library.data)
         self.assertIn("Ajouter un autre projet".encode(), library.data)
 
         detail = self.client.get("/projects/solarwatch")
@@ -172,6 +173,42 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(bi_detail.status_code, 200)
         self.assertIn("Power Automate".encode(), bi_detail.data)
         self.assertIn("transactions par secteur".encode(), bi_detail.data)
+
+        quant_detail = self.client.get("/projects/quantdashboard")
+        self.assertEqual(quant_detail.status_code, 200)
+        self.assertIn("RPostgres".encode(), quant_detail.data)
+        self.assertIn("drawdown maximal".encode(), quant_detail.data)
+
+    def test_quantdashboard_is_selected_for_relevant_offer_and_added_to_cv_context(self):
+        response = self.post_form("/applications", data={
+            "company": "Exemple",
+            "position": "Analyste quantitatif R Shiny",
+            "job_description": (
+                "Développer un dashboard R Shiny pour analyser les marchés financiers, "
+                "la volatilité, la Value at Risk et les séries temporelles."
+            ),
+        })
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            candidatures_app.ensure_application_project_choices(application)
+            projects = candidatures_app.selected_application_projects(application_id)
+            self.assertEqual(projects[0]["slug"], "quantdashboard")
+            prompt = candidatures_app.build_prompt(
+                "cv",
+                candidatures_app.get_profile(),
+                application,
+                selected_projects=projects,
+            )
+            cv = candidatures_app.inject_selected_projects(
+                "PROFIL\nAnalyste quantitatif.", projects
+            )
+            self.assertIn("PostgreSQL hébergé sur Neon", prompt)
+            self.assertIn("moyennes mobiles à 20, 50 et 200 jours", prompt)
+            self.assertIn("R, Shiny", cv)
 
     def test_projects_can_be_added_and_updated_with_validated_public_url(self):
         with candidatures_app.app.app_context():
@@ -270,7 +307,7 @@ class ApplicationTests(unittest.TestCase):
                 "title": "Projet le plus pertinent",
                 "summary": "Surveillance photovoltaïque.",
                 "skills": "Python, pandas, LSTM",
-                "highlights": "Résultat mesuré sur test chronologique",
+                "highlights": "C-index de 0,71 sur test chronologique",
                 "public_url": "https://github.com/example/solar",
             },
             {
@@ -285,7 +322,7 @@ class ApplicationTests(unittest.TestCase):
             "PROFIL\nData analyst.\nFORMATION\nMaster Data", projects
         )
         self.assertIn("Projet le plus pertinent", content)
-        self.assertIn("Résultat mesuré sur test chronologique", content)
+        self.assertIn("C-index de 0,71 sur test chronologique", content)
         self.assertIn("https://github.com/example/solar", content)
         self.assertNotIn("Projet secondaire", content)
 
@@ -551,9 +588,7 @@ class ApplicationTests(unittest.TestCase):
                     "Tableau de bord Power BI - transactions en Inde\n"
                     "Projet personnel\n"
                     "- Rapport interactif orienté métier pour explorer les montants "
-                    "de transactions par secteur, genre, État, année et âge. Résultat "
-                    "documenté : Analyse interactive des montants par secteur "
-                    "d'activité et par genre\n"
+                    "de transactions par secteur, genre, État, année et âge.\n"
                     "- Technologies : Power BI, conception de tableaux de bord, "
                     "visualisation de données, analyse métier, Power Automate, "
                     "automatisation de l'actualisation",
@@ -686,6 +721,186 @@ class ApplicationTests(unittest.TestCase):
         with candidatures_app.app.app_context():
             self.assertEqual(candidatures_app.get_style_examples(), [])
 
+    def test_free_api_uses_multiple_saved_cv_examples_and_requested_language(self):
+        self.post_form("/profile", data={"resume_source": "Data analyst, Python."})
+        self.post_form("/applications", data={
+            "company": "Exemple", "position": "Data Analyst",
+            "job_description": "Analyser des données avec Python.",
+        })
+        with candidatures_app.app.app_context():
+            application_id = candidatures_app.get_db().execute(
+                "SELECT id FROM applications"
+            ).fetchone()["id"]
+            database = candidatures_app.get_db()
+            for index in range(1, 5):
+                database.execute(
+                    """INSERT INTO style_examples (kind, label, content, created_at)
+                       VALUES ('cv', ?, ?, ?)""",
+                    (f"CV {index}", f"Validated CV example {index}", f"2026-01-0{index}"),
+                )
+            database.execute(
+                """INSERT INTO style_examples (kind, label, content, created_at)
+                   VALUES ('letter', 'Letter', 'Validated letter example', '2026-01-05')"""
+            )
+            database.commit()
+
+        with patch("app.generate_with_free_api", return_value="PROFILE\nData analyst.") as generate:
+            response = self.post_form(
+                f"/applications/{application_id}/draft",
+                data={
+                    "kind": "cv", "provider": "api", "allow_cloud": "yes", "language": "en",
+                },
+            )
+        self.assertEqual(response.status_code, 302)
+        prompt = generate.call_args.args[0]
+        self.assertIn("Validated CV example 4", prompt)
+        self.assertIn("Validated CV example 3", prompt)
+        self.assertIn("Validated CV example 2", prompt)
+        self.assertNotIn("Validated CV example 1", prompt)
+        self.assertNotIn("Validated letter example", prompt)
+        self.assertIn("Respecte strictement la langue demandée", prompt)
+        self.assertIn("reproduis au plus près la structure de l'exemple", prompt)
+
+    def test_openrouter_truncated_response_is_not_saved_as_cv(self):
+        self.post_form("/profile", data={"resume_source": "Data analyst, Python."})
+        self.post_form("/applications", data={
+            "company": "Exemple",
+            "position": "Data Scientist",
+            "job_description": "Classify activities from smartphone sensors.",
+        })
+        with candidatures_app.app.app_context():
+            application_id = candidatures_app.get_db().execute(
+                "SELECT id FROM applications"
+            ).fetchone()["id"]
+
+        response_body = json.dumps({
+            "model": "provider/model",
+            "choices": [{
+                "message": {
+                    "content": (
+                        "PROFILE\nData analyst.\nPROJECTS\n"
+                        "HUMAN ACTIVITY RECOGNITION FROM SMARTPHONE SENSORS\n"
+                        "Personal project\n"
+                        "• Comparative classification of physical activities "
+                        "(walking, stairs, sitting"
+                    )
+                },
+                "finish_reason": "length",
+            }],
+        }).encode()
+        api_response = Mock()
+        api_response.__enter__ = Mock(return_value=api_response)
+        api_response.__exit__ = Mock(return_value=False)
+        api_response.read.return_value = response_body
+        with (
+            patch.dict("os.environ", {"LLM_API_KEY": "test-key"}),
+            patch.object(candidatures_app, "FREE_API_MODELS", ["openrouter/free"]),
+            patch("app.urlopen", return_value=api_response),
+        ):
+            result = self.post_form(
+                f"/applications/{application_id}/draft",
+                data={
+                    "kind": "cv",
+                    "provider": "api",
+                    "allow_cloud": "yes",
+                    "language": "en",
+                },
+            )
+
+        self.assertEqual(result.status_code, 302)
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_application(application_id)
+            self.assertEqual(application["cv_draft"], "")
+
+    def test_index_shows_keyword_gap_for_selected_offer(self):
+        self.post_form("/profile", data={"resume_source": "Data analyst, Python, SQL."})
+        self.post_form("/applications", data={
+            "company": "Exemple", "position": "Data Analyst",
+            "job_description": "Python, SQL et Snowflake exigés.",
+        })
+
+        html = self.client.get("/").get_data(as_text=True)
+
+        self.assertIn("Compatibilité ATS", html)
+        self.assertIn("67 % couverts", html)
+        self.assertIn("Snowflake", html)
+
+    def test_spontaneous_application_without_offer_ranks_projects_and_builds_prompt(self):
+        self.post_form("/profile", data={"resume_source": "Statisticien, R, analyse de survie."})
+        self.post_form("/applications", data={
+            "company": "Laboratoire Exemple", "position": "Biostatisticien",
+            "job_description": "", "spontaneous_domain": "biostatistique",
+        })
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            self.assertTrue(candidatures_app.is_spontaneous(application["job_description"]))
+            slugs = {
+                project["slug"] for project in candidatures_app.get_projects()
+            }
+            ranked = candidatures_app.rank_projects(
+                application["job_description"], candidatures_app.get_projects()
+            )
+            prompt = candidatures_app.build_prompt(
+                "letter", candidatures_app.get_profile(), application, language="fr"
+            )
+
+        self.assertTrue({"detection-qtl-r", "inference-reseau", "challenge-qrt"} <= slugs)
+        self.assertEqual(ranked[0]["match_score"], 100)
+        self.assertIn("CANDIDATURE SPONTANEE", prompt)
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Compatibilité ATS", html)
+        self.assertNotIn("disabled>Générer le brouillon", html)
+
+    def test_offer_text_wins_over_spontaneous_domain(self):
+        self.post_form("/applications", data={
+            "company": "Exemple", "position": "Data Analyst",
+            "job_description": "Offre réelle : Power BI.", "spontaneous_domain": "biostatistique",
+        })
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+        self.assertEqual(application["job_description"], "Offre réelle : Power BI.")
+
+    def test_english_cv_does_not_replace_translated_project_with_french_source(self):
+        self.post_form("/profile", data={"resume_source": "Data analyst, Python."})
+        self.post_form("/applications", data={
+            "company": "Exemple", "position": "Data Scientist",
+            "job_description": "Build statistical models and data workflows.",
+        })
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            project = candidatures_app.get_db().execute(
+                "SELECT id FROM projects WHERE slug = 'solarwatch'"
+            ).fetchone()
+            error = candidatures_app.save_application_project_selection(
+                application, [str(project["id"])], str(project["id"])
+            )
+            self.assertIsNone(error)
+
+        generated_cv = (
+            "PROFILE\nData analyst.\n\nPROJECTS\nSolarWatch monitoring\n"
+            "Personal project\n- Monitor photovoltaic performance.\n"
+        )
+        with patch("app.generate_with_free_api", return_value=generated_cv):
+            response = self.post_form(
+                f"/applications/{application_id}/draft",
+                data={
+                    "kind": "cv", "provider": "api", "allow_cloud": "yes", "language": "en",
+                },
+            )
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            saved_cv = candidatures_app.get_application(application_id)["cv_draft"]
+        self.assertIn("Personal project", saved_cv)
+        self.assertIn("Monitor photovoltaic performance.", saved_cv)
+        self.assertNotIn("Projet personnel", saved_cv)
+
     def test_copilot_generator_uses_sdk_without_local_tools(self):
         from copilot.generated.session_events import AssistantMessageData
 
@@ -745,9 +960,69 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(result, "OK")
         self.assertEqual(request.call_count, 2)
 
+    def test_ollama_uses_configured_remote_server(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=None)
+        response.read.return_value = json.dumps(
+            {"message": {"content": "OK"}}
+        ).encode("utf-8")
+
+        with patch("app.OLLAMA_BASE_URL", "https://colab.example"), patch(
+            "app.urlopen", return_value=response
+        ) as request:
+            result = candidatures_app.generate_with_ollama("test", max_tokens=20)
+
+        sent_request = request.call_args.args[0]
+        self.assertEqual(result, "OK")
+        self.assertEqual(sent_request.full_url, "https://colab.example/api/chat")
+        self.assertEqual(sent_request.get_method(), "POST")
+
+    def test_ollama_status_checks_configured_remote_server(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=None)
+        response.read.return_value = json.dumps(
+            {"models": [{"name": candidatures_app.MODEL_NAME}]}
+        ).encode("utf-8")
+
+        with patch("app.OLLAMA_BASE_URL", "https://colab.example"), patch(
+            "app.urlopen", return_value=response
+        ) as request:
+            status = candidatures_app.ollama_status()
+
+        self.assertTrue(status["ready"])
+        self.assertEqual(request.call_args.args[0].full_url, "https://colab.example/api/tags")
+
+    def test_french_cv_translates_english_degree_titles(self):
+        result = candidatures_app.frenchify_degree_titles(
+            "Master’s degree in Data Sciences\nMaster's degree in Engineering Statistics"
+        )
+        self.assertEqual(result, "Master Data Sciences\nMaster Engineering Statistics")
+
+    def test_long_project_title_is_rendered_as_entry_header(self):
+        title = "Classification de l’activité humaine à partir de capteurs de smartphone (Human Activity Recognition)"
+        output = candidatures_app.latex_entries(
+            [title, "Projet personnel", "- Résumé du projet.", "- Technologies : Python, SVM"],
+            max_items=2, max_entries=1, max_header_chars=160,
+        )
+        self.assertTrue(output[0].startswith(r"\cventry"))
+        self.assertIn("Projet personnel", output[0])
+        self.assertTrue(any(line.startswith(r"\cvskills") for line in output))
+
+    def test_hedged_project_phrases_are_removed(self):
+        skills = (
+            "Python, SVM, régression logistique, éventuellement un réseau de neurones "
+            "(MLP, CNN 1D ou LSTM), PCA, matrice de confusion"
+        )
+        self.assertEqual(
+            candidatures_app.remove_hedged_phrases(skills),
+            "Python, SVM, régression logistique, PCA, matrice de confusion",
+        )
+
     def test_ollama_timeout_does_not_repeat_long_generation(self):
         with patch("app.urlopen", side_effect=URLError(TimeoutError("timed out"))) as request:
-            with self.assertRaisesRegex(RuntimeError, "Qwen n'a pas termine"):
+            with self.assertRaisesRegex(RuntimeError, "modèle Ollama n'a pas terminé"):
                 candidatures_app.generate_with_ollama("test", max_tokens=20)
         self.assertEqual(request.call_count, 1)
 
@@ -802,20 +1077,28 @@ class ApplicationTests(unittest.TestCase):
         application = {
             "position": "Data Analyst", "company": "Exemple", "location": "",
             "job_description": "SQL, Power BI et suivi d'indicateurs.",
+            "cv_draft": (
+                "PROFILE\nData analyst with documented SQL and Power BI experience.\n"
+                "PROFESSIONAL EXPERIENCE\nData Analyst\nACME\n"
+                "- Produced operational indicators with SQL and Power BI."
+            ),
         }
         prompt = candidatures_app.build_prompt("letter", profile, application)
-        self.assertIn("C'est avec grand plaisir que je vous adresse ma candidature", prompt)
-        self.assertIn("Ne commence jamais par « J'ai le plaisir de vous proposer »", prompt)
+        self.assertIn("entièrement en français", prompt)
+        self.assertIn("exactement 4 paragraphes de prose et 140 à 180 mots", prompt)
+        self.assertIn("il est la source de référence prioritaire et limite les faits utilisables", prompt)
+        self.assertIn("ne le mentionne que s'il figure dans le CV adapté", prompt)
+        self.assertIn("ne copie aucune phrase anglaise", prompt)
         self.assertIn("Power BI Bootcamp : DAX, visualisation interactive", prompt)
         self.assertIn("Working with SSH : administration Linux", prompt)
-        self.assertIn("uniquement les certifications dont les competences correspondent", prompt)
-        self.assertIn("sans les presenter comme une experience professionnelle", prompt)
-        self.assertIn("contribution concrete attendue", prompt)
-        self.assertIn("2 ou 3 exigences", prompt)
-        self.assertIn("ne repete ni exemple, ni phrase, ni paragraphe", prompt)
-        self.assertIn("Ne calcule jamais un nombre d'annees", prompt)
-        self.assertNotIn("Toujours avec enthousiasme", prompt)
         self.assertIn("N'invente aucun fait", prompt)
+        english_prompt = candidatures_app.build_prompt(
+            "letter", profile, application, language="en"
+        )
+        self.assertIn("Use only English throughout the letter", english_prompt)
+        self.assertIn("it is the controlling source for the letter", english_prompt)
+        self.assertIn("translate its descriptive title and details into English", english_prompt)
+        self.assertIn("140 to 180 words total", english_prompt)
 
     def test_letter_uses_primary_selected_project_as_offer_evidence(self):
         self.post_form(
@@ -850,6 +1133,7 @@ class ApplicationTests(unittest.TestCase):
         generated_letter = (
             "Je candidate au poste proposé chez TotalEnergies.\n\n"
             "Mon parcours comprend des expériences de data et de statistiques.\n\n"
+            "Mon projet personnel SolarWatch documente la surveillance photovoltaïque avec Python. "
             "Ces compétences répondent aux besoins du poste et me permettront de contribuer aux analyses.\n\n"
             "Je souhaite rejoindre vos équipes et contribuer à vos missions."
         )
@@ -865,15 +1149,63 @@ class ApplicationTests(unittest.TestCase):
         self.assertNotIn("Pipeline MLOps", prompt)
         with candidatures_app.app.app_context():
             letter = candidatures_app.get_application(application_id)["letter_draft"]
-            self.assertIn(
-                "SolarWatch - surveillance de performance photovoltaïque", letter
-            )
-            self.assertIn("en mettant en pratique Python, pandas, scikit-learn, PyTorch", letter)
+            self.assertIn("Mon projet personnel SolarWatch", letter)
+            self.assertNotIn("en mettant en pratique Python, pandas, scikit-learn, PyTorch", letter)
             self.assertNotIn("Pipeline MLOps", letter)
             self.assertLess(
                 letter.index("SolarWatch"),
                 letter.index("Ces compétences répondent"),
             )
+
+    def test_english_letter_does_not_inject_a_french_project_title(self):
+        self.post_form("/profile", data={"resume_source": "Data analyst, Python."})
+        self.post_form("/applications", data={
+            "company": "Example",
+            "position": "Data Analyst",
+            "job_description": "Analyze photovoltaic performance.",
+        })
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            project = candidatures_app.get_db().execute(
+                "SELECT id FROM projects WHERE slug = 'solarwatch'"
+            ).fetchone()
+            error = candidatures_app.save_application_project_selection(
+                application, [str(project["id"])], str(project["id"])
+            )
+            self.assertIsNone(error)
+            candidatures_app.get_db().execute(
+                "UPDATE applications SET cv_draft = ? WHERE id = ?",
+                (
+                    "PROFILE\nData analyst.\nPROJECTS\nSolarWatch monitoring.\n"
+                    "Personal project\n- Monitor photovoltaic performance with Python.",
+                    application_id,
+                ),
+            )
+            candidatures_app.get_db().commit()
+
+        generated_letter = (
+            "I am applying for the Data Analyst position because it involves photovoltaic analysis.\n\n"
+            "My documented data analysis experience includes Python.\n\n"
+            "My personal project on photovoltaic monitoring demonstrates this approach.\n\n"
+            "I would be pleased to contribute to the team's analytical work."
+        )
+        with patch("app.generate_with_free_api", return_value=generated_letter):
+            self.post_form(
+                f"/applications/{application_id}/draft",
+                data={
+                    "kind": "letter",
+                    "provider": "api",
+                    "allow_cloud": "yes",
+                    "language": "en",
+                },
+            )
+        with candidatures_app.app.app_context():
+            letter = candidatures_app.get_application(application_id)["letter_draft"]
+        self.assertEqual(letter, generated_letter)
+        self.assertNotIn("surveillance de performance photovoltaïque", letter)
 
     def test_offer_matching_uses_certifications_without_misrepresenting_them(self):
         profile = {
@@ -1057,6 +1389,39 @@ class ApplicationTests(unittest.TestCase):
         self.assertLess(pdf_text.index("Parker Aerospace"), pdf_text.index("Université d'Angers"))
         self.assertLess(pdf_text.index("Université d'Angers"), pdf_text.index("POKAPOK"))
 
+    def test_cv_experiences_with_named_months_are_sorted_and_dates_rendered(self):
+        draft = (
+            "PROFILE\nData analyst.\n"
+            "PROFESSIONAL EXPERIENCE\n"
+            "STATISTICIAN | BUDGET MONITORING Jan 2021 – Dec 2022\n"
+            "Centre d'Enseignement Général\n- Managed budget monitoring.\n"
+            "DATA ANALYST, GENETICS STATISTICS Oct 2025 – Feb 2026\n"
+            "Université d'Angers\n- Analyzed genetic data.\n"
+            "DATA ANALYST & BI SPECIALIST Apr 2026 – Sep 2026\n"
+            "Parker Aerospace\n- Designed dashboards.\n"
+            "EDUCATION\nMaster Data Sciences\n"
+        )
+        sorted_draft = candidatures_app.sort_cv_experience_sections(draft)
+        self.assertLess(sorted_draft.index("Parker Aerospace"), sorted_draft.index("Université d'Angers"))
+        self.assertLess(sorted_draft.index("Université d'Angers"), sorted_draft.index("Centre d'Enseignement Général"))
+
+        latex = candidatures_app.make_cv_latex(
+            {"full_name": "Nom", "email": "", "phone": "", "location": ""},
+            {"position": "Data Analyst", "company": "Exemple"},
+            draft,
+        )
+        self.assertLess(latex.index(r"\cventry{DATA ANALYST \& BI SPECIALIST}"), latex.index(r"\cventry{DATA ANALYST, GENETICS STATISTICS}"))
+        self.assertIn("Apr 2026 - Sep 2026", latex)
+        self.assertIn("Oct 2025 - Feb 2026", latex)
+        self.assertEqual(
+            candidatures_app.date_part_start_month("Oct 2025"),
+            2025 * 12 + 10,
+        )
+        self.assertEqual(
+            candidatures_app.date_part_start_month("Janvier 2021"),
+            2021 * 12 + 1,
+        )
+
     def test_cv_latex_splits_semicolon_education_and_fits_one_page(self):
         profile = {
             "full_name": "Moubarak LASSISSI",
@@ -1124,7 +1489,9 @@ LOGICIELS
 - Azure
 """
         source = candidatures_app.make_cv_latex(profile, application, draft)
-        self.assertIn(r"\cventry{LICENCE EN MATHÉMATIQUES}{Université de Brest}{2022 – 2023}", source)
+        self.assertIn(r"\cventry{MASTER EN INGÉNIERIE STATISTIQUE}{Nantes Universités}{2023 - 2025}", source)
+        self.assertIn(r"\cventry{MASTER EN DATA SCIENCES}{}{2025 - 2026}", source)
+        self.assertNotIn("LICENCE", source)
         self.assertNotIn(r"\cvsection{Aptitudes}", source)
         self.assertNotIn(r"\cvsection{Compétences clés}", source)
         self.assertLess(source.index(r"\cvsection{Profil}"), source.index(r"\cvsection{Expériences professionnelles}"))
@@ -1135,7 +1502,8 @@ LOGICIELS
             pdf = PdfReader(candidatures_app.compile_latex(source))
             self.assertEqual(len(pdf.pages), 1)
             text = pdf.pages[0].extract_text() or ""
-            self.assertIn("Université de Kara", text)
+            self.assertIn("Nantes Universités", text)
+            self.assertNotIn("Université de Kara", text)
             self.assertNotIn("Communication claire", text)
 
     def test_cv_includes_only_certifications_relevant_to_job(self):
@@ -1280,13 +1648,152 @@ LOGICIELS
             profile, {"position": "Data Analyst", "company": "X"}, draft
         )
         self.assertIn(r"\cvskills{SQL, Power BI}", source)
-        self.assertIn("Anglais – B2", source)
+        self.assertIn("Anglais: B2", source)
         self.assertNotIn("Chinois", source)
         self.assertIn(r"\cvsection{Certifications}", source)
         self.assertIn(r"\cvsection{Loisirs}", source)
         self.assertIn("Échecs", source)
         if candidatures_app.shutil.which("xelatex"):
             self.assertEqual(len(PdfReader(candidatures_app.compile_latex(source)).pages), 1)
+
+    def test_cv_language_section_is_translated_from_profile_in_all_export_formats(self):
+        profile = {
+            "full_name": "Moubarak LASSISSI",
+            "email": "candidate@example.com",
+            "phone": "+33123456789",
+            "location": "Angers",
+            "languages": "Français : Langue maternelle\nAnglais : Professionnel",
+        }
+        application = {"position": "Statistical Assistant", "company": "UNESCO"}
+        english_draft = (
+            "PROFILE\nStatistical analyst.\n"
+            "LANGUAGES\nFrançais : Langue maternelle\nAnglais : Professionnel\n"
+        )
+
+        latex = candidatures_app.make_cv_latex(profile, application, english_draft)
+        self.assertIn("French: Native", latex)
+        self.assertIn("English: Professional", latex)
+        self.assertNotIn("Français", latex)
+        self.assertNotIn("Langue maternelle", latex)
+        self.assertNotIn("Professionnel", latex)
+
+        docx = Document(io.BytesIO(
+            candidatures_app.make_cv_docx(profile, application, english_draft).getvalue()
+        ))
+        docx_text = "\n".join(paragraph.text for paragraph in docx.paragraphs)
+        self.assertIn("French: Native", docx_text)
+        self.assertIn("English: Professional", docx_text)
+        self.assertNotIn("Français", docx_text)
+        self.assertNotIn("Langue maternelle", docx_text)
+
+        pdf = PdfReader(io.BytesIO(
+            candidatures_app.make_pdf(profile, application, english_draft, "cv").getvalue()
+        ))
+        pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        self.assertIn("French: Native", pdf_text)
+        self.assertIn("English: Professional", pdf_text)
+        self.assertNotIn("Français", pdf_text)
+
+        french = candidatures_app.replace_cv_language_section(
+            "PROFIL\nAnalyste.\nLANGUAGES\nFrench: Native\nEnglish: Professional",
+            profile,
+            "fr",
+        )
+        self.assertIn("LANGUES\nFrançais: Langue maternelle\nAnglais: Professionnel", french)
+        self.assertNotIn("French: Native", french)
+
+    def test_cv_prompts_leave_language_section_to_application(self):
+        profile = {
+            "full_name": "Nom",
+            "email": "",
+            "phone": "",
+            "location": "",
+            "resume_source": "Data analyst, Python.",
+        }
+        application = {
+            "position": "Data Analyst",
+            "company": "Exemple",
+            "location": "",
+            "job_description": "Data analysis.",
+        }
+        english_prompt = candidatures_app.build_prompt(
+            "cv", profile, application, language="en"
+        )
+        french_prompt = candidatures_app.build_prompt(
+            "cv", profile, application, language="fr"
+        )
+        self.assertIn("Do NOT write a LANGUAGES section", english_prompt)
+        self.assertIn("Ne génère pas de rubrique LANGUES", french_prompt)
+        self.assertIn("Use past-tense action verbs for roles that ended before today", english_prompt)
+        self.assertIn("Candidate-confirmed facts and corrections in the current profile take precedence", english_prompt)
+        self.assertIn("Le CV principal et les corrections confirmées par le candidat priment", french_prompt)
+        self.assertIn("ne prétends pas établir une causalité", french_prompt)
+        self.assertEqual(
+            candidatures_app.cv_location({"location": "Angers"}, "en"),
+            "Angers Open to international mobility",
+        )
+
+    def test_generated_english_cv_uses_profile_languages_and_empty_response_stays_empty(self):
+        self.post_form("/profile", data={
+            "resume_source": "Data analyst, SQL.",
+            "languages": "Français : Langue maternelle\nAnglais : Professionnel",
+        })
+        self.post_form("/applications", data={
+            "company": "Exemple",
+            "position": "Statistical Assistant",
+            "job_description": "Prepare statistical reports.",
+        })
+        with candidatures_app.app.app_context():
+            application_id = candidatures_app.get_db().execute(
+                "SELECT id FROM applications"
+            ).fetchone()["id"]
+
+        with patch(
+            "app.generate_with_free_api",
+            return_value=(
+                "PROFILE\nStatistical analyst.\nLANGUAGES\n"
+                "Français : Langue maternelle\nAnglais : Professionnel"
+            ),
+        ):
+            self.post_form(
+                f"/applications/{application_id}/draft",
+                data={
+                    "kind": "cv",
+                    "provider": "api",
+                    "allow_cloud": "yes",
+                    "language": "en",
+                },
+            )
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_application(application_id)
+            self.assertIn(
+                "LANGUAGES\nFrench: Native\nEnglish: Professional",
+                application["cv_draft"],
+            )
+            self.assertNotIn("Français", application["cv_draft"])
+
+        self.post_form("/applications", data={
+            "company": "Autre",
+            "position": "Data Analyst",
+            "job_description": "Analyze datasets.",
+        })
+        with candidatures_app.app.app_context():
+            empty_application_id = candidatures_app.get_db().execute(
+                "SELECT id FROM applications WHERE company = 'Autre'"
+            ).fetchone()["id"]
+        with patch("app.generate_with_free_api", return_value=""):
+            self.post_form(
+                f"/applications/{empty_application_id}/draft",
+                data={
+                    "kind": "cv",
+                    "provider": "api",
+                    "allow_cloud": "yes",
+                    "language": "en",
+                },
+            )
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_application(empty_application_id)
+            self.assertEqual(application["cv_draft"], "")
 
     def test_cv_layout_is_validated_and_applied(self):
         self.assertEqual(candidatures_app.parse_cv_layout('{"font": 99, "accent": "zzz"}')["font"], 8.5)

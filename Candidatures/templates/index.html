@@ -71,8 +71,8 @@
         {% else %}<p class="muted tiny">Aucun CV complémentaire ajouté.</p>{% endif %}
       </section>
       <section class="side-section">
-        <h3>Bons exemples pour Qwen</h3>
-        <p class="muted tiny">Les 2 plus récents de chaque type guident le style de Qwen (jamais les faits). Marque un brouillon Copilot réussi avec ★.</p>
+        <h3>Bons exemples validés</h3>
+        <p class="muted tiny">Les 2 plus récents guident Qwen et les 3 plus récents l’API gratuite. Ils servent de modèles de structure, jamais de source de faits. Marque un brouillon Copilot réussi avec ★. Copilot ne reçoit pas ces exemples.</p>
         {% if style_examples %}
           <ul class="reference-list">
             {% for example in style_examples %}
@@ -131,6 +131,13 @@
           <div class="field-pair field-pair-wide"><label class="url-field">Lien de l’offre<input name="url" type="url" placeholder="https://..."></label></div>
           <label>Adresse de l’entreprise<textarea name="company_address" rows="2" placeholder="Facultatif : adresse du recruteur ou de l’entreprise"></textarea></label>
           <label>Description de l’offre<textarea name="job_description" rows="5" placeholder="Colle ici l’annonce complète pour pouvoir générer des brouillons adaptés."></textarea></label>
+          <label>Candidature spontanée (sans offre)
+            <select name="spontaneous_domain">
+              <option value="">— Je colle une offre ci-dessus —</option>
+              {% for key, label in spontaneous_domains %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <p class="muted tiny">Si aucune description n’est collée, le domaine choisi sert de base : projets recommandés, mots-clés à acquérir, CV et lettre.</p>
           <div class="form-end"><span class="muted tiny">Les champs marqués * sont nécessaires.</span><button class="button button-accent" type="submit">Ajouter au suivi <span aria-hidden="true">→</span></button></div>
         </form>
       </section>
@@ -191,6 +198,22 @@
                 <p class="muted">Ajoute tes premiers projets dans la bibliothèque pour pouvoir les rapprocher des offres.</p>
               {% endif %}
             </section>
+            {% if keyword_gap and keyword_gap.total %}
+            <section class="keyword-gap">
+              <div class="section-heading"><div><p class="eyebrow">Compatibilité ATS</p><h3>Mots-clés de l’offre · {{ keyword_gap.score }} % couverts</h3></div></div>
+              <p class="muted tiny">Analyse locale : l’offre est comparée à ton profil, tes CV de référence et ta bibliothèque de projets. Ajoute une compétence à ton profil seulement si tu la maîtrises vraiment.</p>
+              {% if keyword_gap.covered %}<p><strong>Déjà documentés :</strong> {% for term in keyword_gap.covered %}<span class="prereq-ok keyword-chip">{{ term }}</span> {% endfor %}</p>{% endif %}
+              {% if keyword_gap.missing %}
+              <p><strong>À acquérir ou à documenter :</strong></p>
+              <ul class="keyword-missing">
+                {% for item in keyword_gap.missing %}
+                <li><span class="prereq-missing keyword-chip">{{ item.term }}</span>
+                  {% for name, url in item.links %}<a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</li>
+                {% endfor %}
+              </ul>
+              {% else %}<p class="muted">Tous les mots-clés détectés sont déjà documentés.</p>{% endif %}
+            </section>
+            {% endif %}
             <div class="draft-heading"><div><p class="eyebrow">Qwen local ou GitHub Copilot</p><h3>Préparer les documents</h3></div></div>
           <div class="prereq-status" aria-live="polite">
             <span class="{% if has_resume %}prereq-ok{% else %}prereq-missing{% endif %}">CV de référence {% if has_resume %}enregistré{% else %}à renseigner dans le profil{% endif %}</span>
@@ -203,11 +226,11 @@
             <article class="draft-panel"><div class="draft-panel-heading"><span class="draft-number">A</span><div><h4>CV adapté</h4><p>Réorganisé à partir de ton CV de référence.</p></div></div>
               <form method="post" class="generation-form" action="{{ url_for('generate_draft', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="cv">
                               <label>Langue <select name="language"><option value="auto">Auto (langue de l’offre)</option><option value="fr">Français</option><option value="en">English</option></select></label>
-                              <label>Moteur  <select name="provider"><option value="ollama">Qwen local · {{ ollama.model }}</option><option value="copilot">GitHub Copilot · quota ou crédits</option></select></label>
-                <label class="cloud-consent"><input type="checkbox" name="allow_cloud" value="yes"> J’accepte d’envoyer mon CV et cette offre à GitHub pour cette génération.</label>
+                              <label>Moteur  <select name="provider"><option value="ollama">Qwen local · {{ ollama.model }}</option><option value="api">API gratuite (OpenRouter) · sans coût</option><option value="copilot">GitHub Copilot · quota ou crédits</option></select></label>
+              <label class="cloud-consent"><input type="checkbox" name="allow_cloud" value="yes"> J’accepte d’envoyer mon CV, cette offre et les exemples validés (pour l’API gratuite) au service cloud choisi pour cette génération.</label>
                 <button class="button button-outline" type="submit" {% if not can_generate %}disabled{% endif %}>Générer le brouillon</button></form>
               {% if selected.cv_draft %}<pre class="draft-output">{{ selected.cv_draft }}</pre><div class="download-options"><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='cv', file_format='pdf') }}">PDF · 1 page ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='cv') }}">DOCX modifiable ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='cv', file_format='tex') }}">LaTeX ↓</a></div>
-                            <form method="post" action="{{ url_for('save_style_example', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="cv"><button class="text-button" type="submit">★ Garder comme bon exemple pour Qwen</button></form>              <details class="layout-panel"><summary>Ajuster la mise en page</summary>
+                          <form method="post" action="{{ url_for('save_style_example', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="cv"><button class="text-button" type="submit">★ Garder comme bon exemple pour les modèles gratuits</button></form>              <details class="layout-panel"><summary>Ajuster la mise en page</summary>
                 <form method="post" id="layout-form" action="{{ url_for('save_cv_layout', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <label>Taille du texte (pt) <input type="number" name="font" min="7" max="11" step="0.25" value="{{ cv_layout.font }}"></label>
                   <label>Marges (cm) <input type="number" name="margin" min="0.8" max="2.5" step="0.1" value="{{ cv_layout.margin }}"></label>
@@ -230,11 +253,11 @@
             <article class="draft-panel"><div class="draft-panel-heading"><span class="draft-number draft-number-warm">B</span><div><h4>Lettre de motivation</h4><p>Relie les besoins du poste, tes expériences et ce que tu peux concrètement apporter.</p></div></div>
               <form method="post" class="generation-form" action="{{ url_for('generate_draft', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="letter">
                               <label>Langue <select name="language"><option value="auto">Auto (langue de l’offre)</option><option value="fr">Français</option><option value="en">English</option></select></label>
-                              <label>Moteur  <select name="provider"><option value="ollama">Qwen local · {{ ollama.model }}</option><option value="copilot">GitHub Copilot · quota ou crédits</option></select></label>
-                <label class="cloud-consent"><input type="checkbox" name="allow_cloud" value="yes"> J’accepte d’envoyer mon CV et cette offre à GitHub pour cette génération.</label>
+                              <label>Moteur  <select name="provider"><option value="ollama">Qwen local · {{ ollama.model }}</option><option value="api">API gratuite (OpenRouter) · sans coût</option><option value="copilot">GitHub Copilot · quota ou crédits</option></select></label>
+                <label class="cloud-consent"><input type="checkbox" name="allow_cloud" value="yes"> J’accepte d’envoyer mon CV, cette offre et les exemples validés (pour l’API gratuite) au service cloud choisi pour cette génération.</label>
                 <button class="button button-outline" type="submit" {% if not can_generate %}disabled{% endif %}>Générer le brouillon</button></form>
               {% if selected.letter_draft %}<pre class="draft-output">{{ selected.letter_draft }}</pre><div class="download-options"><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter') }}">DOCX ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter', file_format='pdf') }}">PDF ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter', file_format='tex') }}">LaTeX ↓</a></div>
-              <form method="post" action="{{ url_for('save_style_example', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="letter"><button class="text-button" type="submit">★ Garder comme bon exemple pour Qwen</button></form>{% endif %}
+              <form method="post" action="{{ url_for('save_style_example', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="letter"><button class="text-button" type="submit">★ Garder comme bon exemple pour les modèles gratuits</button></form>{% endif %}
             </article>
           </div>
           <p class="review-warning">À relire impérativement : Qwen peut confondre les exigences de l’offre avec ton expérience. Vérifie chaque affirmation, date et compétence avant d’envoyer.</p>
