@@ -88,3 +88,5 @@ Candidatures/README.md
 
 # Captures d'écran du tableau de bord BI, destinées au portfolio
 !/Projet BI/images/*.png
+#Le prompt pour lageneration des lettres de motivations et le cv 
+PROMPTS_CV_LETTRE_IA.md

@@ -41,7 +41,8 @@ from xml.sax.saxutils import escape
 
 from domains import DOMAINS, build_spontaneous_description, domain_choices, is_spontaneous
 import job_import
-from keyword_gap import analyze_keyword_gap, ungrounded_labels
+from keyword_gap import analyze_keyword_gap, contains_term, matching_labels, ungrounded_labels
+from keyword_gap import normalize as keyword_normalize
 from project_catalog import PROJECT_SEEDS, project_slug, rank_projects
 
 
@@ -97,7 +98,7 @@ def close_db(_error=None):
         database.close()
 
 
-PROFILE_EXTRA_FIELDS = ("languages", "hobbies", "certifications", "achievements")
+PROFILE_EXTRA_FIELDS = ("languages", "hobbies", "certifications", "achievements", "base_cv")
 PROFILE_URL_FIELDS = ("linkedin_url", "portfolio_url")
 
 
@@ -673,7 +674,10 @@ def english_task(kind):
             "(write both forms, e.g. 'Extract, Transform, Load (ETL)', when the offer uses one of them). Place "
             "the offer's most important requirements first. Never add a keyword the sources do not support: "
             "keywords missing from the sources are simply left out. Use standard headings and plain text only. "
-            "Profile: 2 factual sentences maximum, focused on the target role, no superlatives. "
+            "Profile: 2 factual sentences maximum, focused on the target role, no superlatives. Rewrite it for "
+            "each offer from the candidate's documented experience: never reuse a generic profile centered on "
+            "another field when a different documented field is more relevant. If a target-specific alternate "
+            "profile is supplied in the candidate-confirmed profile context, use and accurately translate it. "
             "One page maximum: select at most the 3 experiences most relevant to the offer, without dropping a "
             "key experience in favour of a less relevant one. For each experience keep at most 2 short, highly "
             "significant bullet points starting with an action verb, ordered by relevance. Do not invent tasks "
@@ -753,6 +757,18 @@ def build_prompt(
             build_reference_context(profile, reference_documents),
         ]
     )
+    base_cv = profile["base_cv"] if "base_cv" in profile.keys() else ""
+    _, profile_variants = split_profile_variants(base_cv or "")
+    selected_profile_variant = choose_profile_variant(
+        profile_variants,
+        f"{application['position']}\n{application['job_description']}",
+    )
+    if selected_profile_variant:
+        profile_text += (
+            "\nProfil alternatif déjà validé par le candidat et correspondant au poste visé. "
+            "Utilise-le comme base de la rubrique PROFIL, sans ajouter de fait :\n"
+            f"{selected_profile_variant}"
+        )
     achievements = profile_list(profile, "achievements")
     if achievements:
         profile_text += (
@@ -816,6 +832,10 @@ def build_prompt(
             "RÈGLES DE STRUCTURE ABSOLUES :\n"
             "1. Ne génère qu'UNE SEULE rubrique PROFIL. Elle doit contenir un résumé professionnel factuel de 2 phrases maximum, "
                         "centré sur le poste visé et sur les compétences documentées dans les sources (modélisation statistique, MLOps, etc.). "
+                        "Réécris ce profil pour chaque offre : ne recopie pas automatiquement le résumé générique du CV de référence "
+                        "s'il met en avant un domaine différent. Sélectionne les expériences documentées les plus pertinentes pour "
+                        "le poste (par exemple océanographie, santé ou aérospatial) sans inventer ni transférer de compétences. "
+                        "Si le contexte contient un profil alternatif validé par le candidat pour ce poste, utilise-le comme base. "
                         "N'écris jamais « expert », « expertise » ni aucun superlatif, sauf si la source l'écrit. "
                         "Ne calcule ni n'invente jamais un nombre d'années d'expérience (pas de « 3+ ans »), sauf s'il est écrit tel quel dans la source.\n"
             "2. Dans la rubrique EXPERIENCES PROFESSIONNELLES, intègre systématiquement pour chaque poste les aspects d'industrialisation "
@@ -1360,9 +1380,30 @@ def export_file_name(profile, application, kind, language="fr"):
     return "_".join(part for part in parts if part)
 
 
-def cv_location(profile, language="fr"):
+FOREIGN_OFFER_MARKERS = (
+    "canada", "montreal", "montréal", "quebec", "québec", "toronto", "vancouver", "ottawa", "qc",
+    "belgique", "belgium", "brussels", "bruxelles", "suisse", "switzerland", "geneve", "genève",
+    "zurich", "lausanne", "luxembourg", "royaume-uni", "united kingdom", "london", "londres",
+    "allemagne", "germany", "berlin", "munich", "espagne", "spain", "madrid", "barcelona",
+    "pays-bas", "netherlands", "amsterdam", "irlande", "ireland", "dublin", "maroc", "morocco",
+    "tunisie", "senegal", "sénégal", "togo", "usa", "united states", "new york", "singapore",
+)
+
+
+def offer_is_abroad(application):
+    try:
+        location = (application["location"] or "") if application is not None else ""
+    except (KeyError, IndexError):
+        location = ""
+    return any(re.search(rf"(?<!\w){re.escape(m)}(?!\w)", location.casefold()) for m in FOREIGN_OFFER_MARKERS)
+
+
+def cv_location(profile, language="fr", application=None):
     place = (profile["location"] or "").strip()
-    mobility = "Open to international mobility" if language == "en" else "Mobilité internationale"
+    if offer_is_abroad(application):
+        mobility = "Open to international mobility" if language == "en" else "Mobilité internationale"
+    else:
+        mobility = "Open to relocation within France" if language == "en" else "Mobilité nationale"
     return f"{place} {mobility}" if place else mobility
 
 
@@ -1595,7 +1636,7 @@ def make_cv_docx(profile, application, content):
 
     contacts = [
         value.strip()
-        for value in (cv_location(profile, language), profile["email"], profile["phone"])
+        for value in (cv_location(profile, language, application), profile["email"], profile["phone"])
         if value and value.strip()
     ]
     if contacts:
@@ -1663,7 +1704,7 @@ def make_pdf(profile, application, content, kind):
     styles = pdf_styles()
     story = []
     name = escape(profile["full_name"].strip() or "Nom a completer")
-    header_location = cv_location(profile, language) if kind == "cv" else None
+    header_location = cv_location(profile, language, application) if kind == "cv" else None
     contacts = "  |  ".join(escape(value) for value in letter_header_lines(profile, application, header_location))
 
     story.append(Paragraph(name, styles["name"]))
@@ -1919,7 +1960,7 @@ LATEX_CV_TEMPLATE = r"""\documentclass[10pt,a4paper]{article}
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage[hidelinks]{hyperref}
-\setmainfont{Latin Modern Roman}
+\setmainfont{Latin Modern Roman}[Kerning=Off]
 \definecolor{accent}{HTML}{@@ACCENT@@}
 \pagestyle{empty}
 \setlength{\parindent}{0pt}
@@ -1939,7 +1980,7 @@ LATEX_CV_TEMPLATE = r"""\documentclass[10pt,a4paper]{article}
 @@BODY@@
 \end{minipage}}
 \ifdim\dimexpr\ht\cvcontent+\dp\cvcontent\relax>0.96\textheight
-  \resizebox{!}{0.96\textheight}{\usebox{\cvcontent}}
+  \vbox to 0.96\textheight{\vss\resizebox{!}{0.96\textheight}{\usebox{\cvcontent}}\vss}
 \else
   \usebox{\cvcontent}
 \fi
@@ -2411,7 +2452,7 @@ def make_cv_latex(profile, application, content, layout=None):
         if key == "FORMATION":
             body.extend(latex_education_entries(lines))
         elif key == "EXPERIENCES PROFESSIONNELLES":
-            body.extend(latex_entries(lines, max_items=2, max_entries=3, offer_text=offer_text))
+            body.extend(latex_entries(lines, max_items=2, max_entries=4, offer_text=offer_text))
         elif key == "PROJETS":
             body.extend(
                 latex_entries(lines, max_items=2, max_entries=1, max_header_chars=160, offer_text=offer_text)
@@ -2454,7 +2495,7 @@ def make_cv_latex(profile, application, content, layout=None):
     body_parts += column_row(("COMPETENCES CLES", "COMPETENCES TECHNIQUES", "APTITUDES"), ("LOGICIELS",))
     body_parts += column_row(("LANGUES",), ("LOISIRS",))
     contacts = []
-    for value in (cv_location(profile, language), profile["email"], profile["phone"]):
+    for value in (cv_location(profile, language, application), profile["email"], profile["phone"]):
         value = (value or "").strip()
         if not value:
             continue
@@ -2777,7 +2818,7 @@ def save_profile():
         """UPDATE profile SET full_name = ?, email = ?, phone = ?, location = ?,
            postal_address = ?, linkedin_url = ?, portfolio_url = ?,
            languages = ?, hobbies = ?, certifications = ?,
-           achievements = ?, resume_source = ?
+           achievements = ?, base_cv = ?, resume_source = ?
            WHERE id = 1""",
         (
             request.form.get("full_name", "").strip(),
@@ -3284,6 +3325,14 @@ def generate_draft(application_id):
                 draft = frenchify_degree_titles(draft)
             draft = sort_cv_experience_sections(draft)
             if language == "fr":
+                base_cv = profile["base_cv"] if "base_cv" in profile.keys() else ""
+                _, profile_variants = split_profile_variants(base_cv or "")
+                profile_variant = choose_profile_variant(
+                    profile_variants,
+                    f"{application['position']}\n{application['job_description']}",
+                )
+                if profile_variant:
+                    draft = apply_profile_variant(draft, profile_variant)
                 draft = inject_selected_projects(draft, selected_projects)
             draft = replace_cv_language_section(draft, profile, language)
             draft = drop_ungrounded_claims(
@@ -3313,6 +3362,254 @@ def generate_draft(application_id):
     )
     get_db().commit()
     flash("Brouillon genere. Relis-le et verifie chaque information avant utilisation.", "success")
+    return redirect(url_for("index", selected=application_id))
+
+
+@app.post("/applications/<int:application_id>/draft/save")
+def save_draft_text(application_id):
+    kind = request.form.get("kind")
+    if get_application(application_id) is None or kind not in {"cv", "letter"}:
+        flash("Demande invalide.", "error")
+        return redirect(url_for("index"))
+    content = request.form.get("content", "").replace("\r\n", "\n").strip()
+    field = "cv_draft" if kind == "cv" else "letter_draft"
+    get_db().execute(
+        f"UPDATE applications SET {field} = ?, updated_at = ? WHERE id = ?",
+        (content, datetime.now().isoformat(timespec="seconds"), application_id),
+    )
+    get_db().commit()
+    flash("Modifications enregistrées. Les téléchargements utilisent ce texte.", "success")
+    return redirect(url_for("index", selected=application_id))
+
+
+def parse_base_experiences(base_cv):
+    section, entries, current = "", [], None
+    for raw_line in base_cv.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        key = CV_SECTION_ALIASES.get(normalize_heading(line), normalize_heading(line))
+        if key in CV_SECTION_TITLES:
+            section, current = key, None
+            continue
+        if section != "EXPERIENCES PROFESSIONNELLES" or CV_SKILLS_LINE.match(line):
+            continue
+        if line.startswith(("- ", "* ", "• ")):
+            if current:
+                current["bullets"].append(line[2:].strip())
+            continue
+        if current is None or current["bullets"]:
+            current = {"header": [], "bullets": []}
+            entries.append(current)
+        current["header"].append(line)
+    return [
+        {
+            "organisation": entry["header"][1] if len(entry["header"]) > 1 else split_trailing_date(entry["header"][0])[0],
+            "bullets": entry["bullets"],
+            "text": " ".join(entry["header"] + entry["bullets"]),
+        }
+        for entry in entries
+        if entry["bullets"]
+    ]
+
+
+def _sentence_fragment(text):
+    text = text.strip().rstrip(".;")
+    return text[:1].lower() + text[1:] if text[1:2].islower() else text
+
+
+def _join_french(items):
+    items = [item for item in items if item]
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " et " + items[-1] if items else ""
+
+
+def build_letter_from_base(profile, application, projects):
+    """Lettre assemblée uniquement à partir du CV de base : rien n'est inventé."""
+    base = split_profile_variants(profile["base_cv"] or "")[0]
+    offer = " ".join(str(application[key] or "") for key in ("position", "job_description"))
+    role = cv_role_title(application, upper=False, language="fr")
+    company = (application["company"] or "").strip()
+    degrees = [
+        re.split(r"\s*;\s*", line.strip("-*• ").strip())[0]
+        for line in base.splitlines()
+        if re.match(r"(?i)^[-*•\s]*master\b", line)
+    ]
+    skills = matching_labels(offer, base)[:6]
+
+    opening = (
+        f"Je vous adresse ma candidature spontanée en tant que {role}"
+        if is_spontaneous(application["job_description"])
+        else f"Je vous adresse ma candidature pour le poste de {role}"
+    ) + (f" au sein de {company}." if company else ".")
+    if degrees:
+        opening += " Titulaire " + " et ".join(f"d'un {degree}" for degree in degrees[:2]) + ","
+        opening += (
+            f" je mets en pratique {_join_french(skills)} dans mes expériences."
+            if skills else " je souhaite mettre mes compétences au service de vos projets."
+        )
+
+    experiences = sorted(
+        enumerate(parse_base_experiences(base)),
+        key=lambda pair: (-len(matching_labels(offer, pair[1]["text"])), pair[0]),
+    )[:2]
+    paragraphs = [opening]
+    for rank, (_, experience) in enumerate(experiences):
+        bullets = [_sentence_fragment(bullet) for bullet in experience["bullets"][:2]]
+        lead = "Chez" if rank == 0 else "Auparavant, chez"
+        paragraphs.append(
+            f"{lead} {experience['organisation']}, ma mission a consisté à "
+            + " et à ".join(bullets) + "."
+        )
+    if projects:
+        project = projects[0]
+        summary = remove_hedged_phrases(project["summary"]).rstrip(".")
+        paragraphs.append(f"Parmi mes projets, {project['title']} : {summary}.")
+    paragraphs.append(
+        f"Je serais heureux de mettre cette expérience au service de {company}." if company
+        else "Je serais heureux de mettre cette expérience au service de vos équipes."
+    )
+    return normalize_dashes("\n\n".join(paragraphs))
+
+
+def tailor_bullets_to_offer(cv_content, offer_text):
+    """Trie les puces de chaque expérience selon leur recoupement avec l'offre (ordre d'origine à égalité)."""
+    if not offer_text.strip():
+        return cv_content
+    output, group, section = [], [], ""
+
+    def flush():
+        group.sort(key=lambda line: -len(matching_labels(offer_text, line)))
+        output.extend(group)
+        group.clear()
+
+    for line in cv_content.splitlines():
+        key = CV_SECTION_ALIASES.get(normalize_heading(line), normalize_heading(line))
+        is_bullet = section == "EXPERIENCES PROFESSIONNELLES" and line.lstrip().startswith(("- ", "* ", "• "))
+        if is_bullet:
+            group.append(line)
+            continue
+        flush()
+        if key in CV_SECTION_TITLES:
+            section = key
+        output.append(line)
+    flush()
+    return "\n".join(output)
+
+
+PROFILE_VARIANTS_HEADING = "PROFILS ALTERNATIFS"
+
+
+def split_profile_variants(base_cv):
+    """Sépare le CV de base et ses variantes de profil, écrites `domaine : texte` (clés de DOMAINS)."""
+    lines, kept, variants, in_block = base_cv.splitlines(), [], {}, False
+    for line in lines:
+        if normalize_heading(line) == PROFILE_VARIANTS_HEADING:
+            in_block = True
+            continue
+        if in_block:
+            key, _, text = line.partition(":")
+            if key.strip() in DOMAINS and text.strip():
+                variants[key.strip()] = text.strip()
+                continue
+            if not line.strip():
+                continue
+            in_block = False
+        kept.append(line)
+    return "\n".join(kept), variants
+
+
+def choose_profile_variant(variants, offer_text):
+    """Variante dont les mots-clés de domaine recoupent le mieux l'offre ; None si aucune ne ressort."""
+    normalized_offer = keyword_normalize(offer_text)
+    best_key, best_score = None, 0
+    for key in variants:
+        keywords = [word.strip() for word in DOMAINS[key][1].split(",")]
+        score = sum(1 for word in keywords if word and contains_term(normalized_offer, keyword_normalize(word)))
+        if score > best_score:
+            best_key, best_score = key, score
+    return variants[best_key] if best_key else None
+
+
+def apply_profile_variant(cv_content, profile_text):
+    lines, output, section, replaced = cv_content.splitlines(), [], "", False
+    for line in lines:
+        key = CV_SECTION_ALIASES.get(normalize_heading(line), normalize_heading(line))
+        if key in CV_SECTION_TITLES:
+            section = key
+            output.append(line)
+            if key == "PROFIL" and not replaced:
+                output.append(profile_text)
+                replaced = True
+            continue
+        if section == "PROFIL" and replaced:
+            continue
+        output.append(line)
+    return "\n".join(output)
+
+
+@app.post("/applications/<int:application_id>/draft/from-base")
+def build_cv_from_base(application_id):
+    application = get_application(application_id)
+    profile = get_profile()
+    base = (profile["base_cv"] or "").strip()
+    if application is None:
+        flash("Candidature introuvable.", "error")
+        return redirect(url_for("index"))
+    if not base:
+        flash("Renseigne d'abord ton CV de base dans le profil.", "error")
+        return redirect(url_for("index", selected=application_id))
+    base_text, variants = split_profile_variants(base)
+    offer_text = " ".join(str(application[key] or "") for key in ("position", "job_description"))
+    draft = clean_cv_draft(base_text)
+    chosen = choose_profile_variant(variants, offer_text)
+    if chosen:
+        draft = apply_profile_variant(draft, chosen)
+    draft = sort_cv_experience_sections(draft)
+    draft = tailor_bullets_to_offer(draft, offer_text)
+    if detect_cv_language(draft) == "fr":
+        draft = inject_selected_projects(draft, selected_application_projects(application_id))
+    get_db().execute(
+        "UPDATE applications SET cv_draft = ?, updated_at = ? WHERE id = ?",
+        (draft, datetime.now().isoformat(timespec="seconds"), application_id),
+    )
+    get_db().commit()
+    flash(
+        "CV construit depuis ton CV de base, sans modèle. Le titre, les compétences et les projets "
+        "suivent l'offre ; modifie le texte ci-dessous si besoin.",
+        "success",
+    )
+    return redirect(url_for("index", selected=application_id))
+
+
+@app.post("/applications/<int:application_id>/letter/from-base")
+def build_letter_from_base_route(application_id):
+    application = get_application(application_id)
+    profile = get_profile()
+    if application is None:
+        flash("Candidature introuvable.", "error")
+        return redirect(url_for("index"))
+    if not (profile["base_cv"] or "").strip():
+        flash("Renseigne d'abord ton CV de base dans le profil.", "error")
+        return redirect(url_for("index", selected=application_id))
+    letter = build_letter_from_base(profile, application, selected_application_projects(application_id))
+    get_db().execute(
+        "UPDATE applications SET letter_draft = ?, updated_at = ? WHERE id = ?",
+        (letter, datetime.now().isoformat(timespec="seconds"), application_id),
+    )
+    get_db().commit()
+    flash("Lettre construite sans modèle à partir de ton CV de base ; relis et modifie-la si besoin.", "success")
+    return redirect(url_for("index", selected=application_id))
+
+
+@app.post("/applications/<int:application_id>/base-cv-from-draft")
+def save_base_cv_from_draft(application_id):
+    application = get_application(application_id)
+    if application is None or not application["cv_draft"].strip():
+        flash("Aucun CV à utiliser comme base.", "error")
+        return redirect(url_for("index", selected=application_id))
+    get_db().execute("UPDATE profile SET base_cv = ? WHERE id = 1", (application["cv_draft"],))
+    get_db().commit()
+    flash("Ce CV est maintenant ton CV de base (modifiable dans le profil).", "success")
     return redirect(url_for("index", selected=application_id))
 
 

@@ -1,0 +1,2 @@
+"chains","iterations_per_chain","warmup_per_chain","divergent_transitions","max_treedepth_hits","max_rhat","min_effective_sample_size","events_composite","censored","randomized_participants"
+4,2000,1000,0,0,1.00075459257154,2826.19175326555,144,168,312

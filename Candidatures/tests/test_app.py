@@ -161,6 +161,8 @@ class ApplicationTests(unittest.TestCase):
         self.assertIn("SolarWatch".encode(), library.data)
         self.assertIn("Tableau de bord Power BI".encode(), library.data)
         self.assertIn("QuantDashboard".encode(), library.data)
+        self.assertIn("Survie clinique bayésienne".encode(), library.data)
+        self.assertIn("Prévision solaire bayésienne".encode(), library.data)
         self.assertIn("Ajouter un autre projet".encode(), library.data)
 
         detail = self.client.get("/projects/solarwatch")
@@ -178,6 +180,59 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(quant_detail.status_code, 200)
         self.assertIn("RPostgres".encode(), quant_detail.data)
         self.assertIn("drawdown maximal".encode(), quant_detail.data)
+
+        bayesian_detail = self.client.get("/projects/modelisation-bayesienne")
+        self.assertEqual(bayesian_detail.status_code, 200)
+        self.assertIn("inférence a posteriori".encode(), bayesian_detail.data)
+        self.assertIn("Monte-Carlo".encode(), bayesian_detail.data)
+
+        pbc_detail = self.client.get("/projects/pbc-rstan-survival")
+        self.assertEqual(pbc_detail.status_code, 200)
+        self.assertIn("zéro divergence".encode(), pbc_detail.data)
+        self.assertIn("0,85".encode(), pbc_detail.data)
+
+        solar_bayesian_detail = self.client.get("/projects/prevision-solaire-bayesienne")
+        self.assertEqual(solar_bayesian_detail.status_code, 200)
+        self.assertIn("Normal-Inverse-Gamma".encode(), solar_bayesian_detail.data)
+        self.assertIn("2 495,88".encode(), solar_bayesian_detail.data)
+
+    def test_bayesian_projects_rank_for_relevant_offers(self):
+        with candidatures_app.app.app_context():
+            projects = candidatures_app.get_projects()
+            survival_ranked = candidatures_app.rank_projects(
+                "Analyse de survie clinique avec RStan, modèle Weibull et données censurées",
+                projects,
+            )
+            solar_ranked = candidatures_app.rank_projects(
+                "Prévision solaire probabiliste en Python avec régression bayésienne et Gibbs",
+                projects,
+            )
+            general_ranked = candidatures_app.rank_projects(
+                "Data Analyst Python SQL tableaux de bord",
+                projects,
+            )
+
+        self.assertEqual(survival_ranked[0]["slug"], "pbc-rstan-survival")
+        self.assertEqual(solar_ranked[0]["slug"], "prevision-solaire-bayesienne")
+        recommended_general = [
+            item["slug"] for item in general_ranked if item["match_score"] > 0
+        ][:2]
+        self.assertNotIn("pbc-rstan-survival", recommended_general)
+        self.assertNotIn("prevision-solaire-bayesienne", recommended_general)
+
+    def test_bayesian_catalog_copy_is_added_to_cv_without_coursework_framing(self):
+        with candidatures_app.app.app_context():
+            project = candidatures_app.get_db().execute(
+                "SELECT * FROM projects WHERE slug = 'modelisation-bayesienne'"
+            ).fetchone()
+            cv = candidatures_app.inject_selected_projects(
+                "PROFIL\nStatisticien.", [project]
+            )
+
+        self.assertIn("lois a priori à l'inférence a posteriori", cv)
+        self.assertIn("Monte-Carlo", cv)
+        self.assertIn("Statistique bayésienne", cv)
+        self.assertNotIn("Exercices R", cv)
 
     def test_quantdashboard_is_selected_for_relevant_offer_and_added_to_cv_context(self):
         response = self.post_form("/applications", data={
@@ -864,6 +919,145 @@ class ApplicationTests(unittest.TestCase):
             ).fetchone()
         self.assertEqual(application["job_description"], "Offre réelle : Power BI.")
 
+    def test_profile_variant_is_chosen_from_offer_and_hidden_from_cv(self):
+        base = (
+            "PROFIL\nProfil général.\nEXPERIENCES PROFESSIONNELLES\nAnalyste, Acme, Avr 2024 - Sep 2024\n- Rapports.\n"
+            "PROFILS ALTERNATIFS\nbiostatistique : Profil biostatistique.\ndata-analyst : Profil BI.\n"
+        )
+        text, variants = candidatures_app.split_profile_variants(base)
+        self.assertNotIn("ALTERNATIFS", text)
+        self.assertEqual(set(variants), {"biostatistique", "data-analyst"})
+        self.assertEqual(
+            candidatures_app.choose_profile_variant(variants, "Analyse de survie, essais cliniques, R, SAS"),
+            "Profil biostatistique.",
+        )
+        self.assertEqual(
+            candidatures_app.choose_profile_variant(variants, "Power BI, DAX, tableaux de bord"),
+            "Profil BI.",
+        )
+        field_variants = {
+            "oceanographie": "Profil océanographique.",
+            "aerospace": "Profil aérospatial.",
+            "biostatistique": "Profil santé.",
+        }
+        self.assertEqual(
+            candidatures_app.choose_profile_variant(
+                field_variants,
+                "Ingénieur statisticien en océanographie, données océaniques et Copernicus Marine",
+            ),
+            "Profil océanographique.",
+        )
+        self.assertEqual(
+            candidatures_app.choose_profile_variant(
+                field_variants,
+                "Statisticien données aéronautiques, fiabilité des avions",
+            ),
+            "Profil aérospatial.",
+        )
+        self.assertEqual(
+            candidatures_app.choose_profile_variant(
+                {"oceanographie": "Profil océanographique."},
+                "Analyse de NetCDF avec xarray et données marines",
+            ),
+            "Profil océanographique.",
+        )
+        self.assertEqual(
+            candidatures_app.choose_profile_variant(
+                {"data-analyst": "Profil Data Analyst.", "data-engineering": "Profil Data Engineer."},
+                "Data Engineer, intégration de données, ETL et SQL",
+            ),
+            "Profil Data Engineer.",
+        )
+        self.assertIsNone(candidatures_app.choose_profile_variant(variants, "Boulanger"))
+        draft = candidatures_app.apply_profile_variant(text, "Profil BI.")
+        self.assertIn("Profil BI.", draft)
+        self.assertNotIn("Profil général.", draft)
+        self.assertIn("Acme", draft)
+
+    def test_model_generated_cv_uses_offer_specific_validated_profile_variant(self):
+        base_cv = (
+            "PROFIL\nProfil général centré sur la génétique.\n"
+            "EXPERIENCES PROFESSIONNELLES\nStatisticien, Exemple\n- Analyse statistique.\n"
+            "PROFILS ALTERNATIFS\n"
+            "oceanographie : Statisticien orienté vers l'analyse de données océaniques et la prévision environnementale.\n"
+            "aerospace : Analyste de données appliqué aux systèmes aéronautiques et à la fiabilité industrielle.\n"
+            "biostatistique : Statisticien en santé, analyse de survie et génétique statistique.\n"
+        )
+        self.post_form("/profile", data={
+            "resume_source": (
+                "Master en Ingénierie Statistique. Expérience en analyse de données "
+                "océanographiques et en prévision environnementale."
+            ),
+            "base_cv": base_cv,
+        })
+        self.post_form("/applications", data={
+            "company": "Institut océanographique",
+            "position": "Ingénieur statisticien en océanographie",
+            "job_description": (
+                "Analyse de données océaniques, océanographie physique, Copernicus Marine."
+            ),
+        })
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            prompt = candidatures_app.build_prompt(
+                "cv",
+                candidatures_app.get_profile(),
+                application,
+                language="fr",
+            )
+        self.assertIn("profil alternatif déjà validé", prompt.lower())
+        self.assertIn("données océaniques", prompt.lower())
+
+        generated_cv = (
+            "PROFIL\nTitulaire d’un Master en Ingénierie Statistique, spécialisé "
+            "en génétique statistique.\n"
+            "EXPERIENCES PROFESSIONNELLES\nStatisticien, Exemple\n- Analyse statistique.\n"
+        )
+        with patch("app.generate_with_free_api", return_value=generated_cv):
+            response = self.post_form(
+                f"/applications/{application_id}/draft",
+                data={"kind": "cv", "provider": "api", "allow_cloud": "yes", "language": "fr"},
+            )
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            saved_cv = candidatures_app.get_application(application_id)["cv_draft"]
+        self.assertIn("données océaniques", saved_cv)
+        self.assertNotIn("génétique statistique", saved_cv)
+
+    def test_cv_built_from_base_without_model_and_manual_edit_is_saved(self):
+        base = (
+            "PROFIL\nStatisticien orienté données.\n"
+            "EXPERIENCES PROFESSIONNELLES\nDATA SCIENTIST\nPOKAPOK\n- Modélisation prédictive.\n"
+            "Compétences : Python, Docker\nFORMATION\nMaster Data Sciences | Angers Universités | 2025 - 2026"
+        )
+        self.post_form("/profile", data={"resume_source": "x", "base_cv": base})
+        self.post_form("/applications", data={
+            "company": "Exemple", "position": "Data Scientist", "job_description": "Docker et Python.",
+        })
+        with candidatures_app.app.app_context():
+            application_id = candidatures_app.get_db().execute(
+                "SELECT id FROM applications"
+            ).fetchone()["id"]
+        with patch("app.generate_with_ollama") as model:
+            response = self.post_form(f"/applications/{application_id}/draft/from-base", data={})
+        self.assertEqual(response.status_code, 302)
+        model.assert_not_called()
+        with candidatures_app.app.app_context():
+            draft = candidatures_app.get_application(application_id)["cv_draft"]
+        self.assertIn("Statisticien orienté données.", draft)
+        self.assertIn("POKAPOK", draft)
+
+        self.post_form(
+            f"/applications/{application_id}/draft/save",
+            data={"kind": "cv", "content": draft + "\nLANGUES\nFrançais"},
+        )
+        with candidatures_app.app.app_context():
+            saved = candidatures_app.get_application(application_id)["cv_draft"]
+        self.assertTrue(saved.endswith("Français"))
+
     def test_english_cv_does_not_replace_translated_project_with_french_source(self):
         self.post_form("/profile", data={"resume_source": "Data analyst, Python."})
         self.post_form("/applications", data={
@@ -1145,7 +1339,7 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         prompt = generate.call_args.args[0]
         self.assertIn("Projet personnel principal choisi", prompt)
-        self.assertIn("SolarWatch — surveillance de performance photovoltaïque", prompt)
+        self.assertIn("SolarWatch - surveillance de performance photovoltaïque", prompt)
         self.assertNotIn("Pipeline MLOps", prompt)
         with candidatures_app.app.app_context():
             letter = candidatures_app.get_application(application_id)["letter_draft"]
@@ -1729,8 +1923,12 @@ LOGICIELS
         self.assertIn("Le CV principal et les corrections confirmées par le candidat priment", french_prompt)
         self.assertIn("ne prétends pas établir une causalité", french_prompt)
         self.assertEqual(
-            candidatures_app.cv_location({"location": "Angers"}, "en"),
+            candidatures_app.cv_location({"location": "Angers"}, "en", {"location": "Montréal, QC"}),
             "Angers Open to international mobility",
+        )
+        self.assertEqual(
+            candidatures_app.cv_location({"location": "Angers"}, "fr", {"location": "Brest"}),
+            "Angers Mobilité nationale",
         )
 
     def test_generated_english_cv_uses_profile_languages_and_empty_response_stays_empty(self):

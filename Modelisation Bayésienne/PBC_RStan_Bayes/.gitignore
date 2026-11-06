@@ -1,0 +1,7 @@
+outputs/
+*.rds
+*.RData
+!results/
+results/*.rds
+!results/*.csv
+!results/*.png

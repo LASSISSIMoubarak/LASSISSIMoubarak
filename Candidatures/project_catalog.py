@@ -7,7 +7,7 @@ import unicodedata
 PROJECT_SEEDS = (
     {
         "slug": "solarwatch",
-        "title": "SolarWatch — surveillance de performance photovoltaïque",
+        "title": "SolarWatch - surveillance de performance photovoltaïque",
         "summary": (
             "Mini-pipeline de surveillance de deux centrales photovoltaïques : "
             "sous-performance, alertes candidates et prévision de production."
@@ -38,7 +38,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "power-bi-transactions-india",
-        "title": "Tableau de bord Power BI — transactions en Inde",
+        "title": "Tableau de bord Power BI - transactions en Inde",
         "summary": (
             "Rapport interactif orienté métier pour explorer les montants de "
             "transactions par secteur, genre, État, année et âge."
@@ -72,7 +72,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "quantdashboard",
-        "title": "QuantDashboard — tableau de bord quantitatif multi-actifs",
+        "title": "QuantDashboard - tableau de bord quantitatif multi-actifs",
         "summary": (
             "Application interactive R Shiny de suivi des cours, des rendements "
             "et des indicateurs de risque pour plusieurs classes d'actifs."
@@ -113,7 +113,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "mlops-breast-cancer",
-        "title": "Pipeline MLOps — classification du cancer du sein",
+        "title": "Pipeline MLOps - classification du cancer du sein",
         "summary": (
             "Pipeline reproductible de préparation, entraînement et prédiction "
             "avec le jeu Wisconsin intégré à scikit-learn."
@@ -140,7 +140,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "reinforcement-learning",
-        "title": "Apprentissage par renforcement — DQN et PPO",
+        "title": "Apprentissage par renforcement - DQN et PPO",
         "summary": (
             "Étude comparative de DQN et PPO sur CartPole et un environnement "
             "GridWorld personnel, avec configurations DQN pour LunarLander."
@@ -166,7 +166,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "nlp-transformers",
-        "title": "NLP — classification, Transformers et recherche sémantique",
+        "title": "NLP - classification, Transformers et recherche sémantique",
         "summary": (
             "Ensemble de travaux pratiques sur la classification de fake news, "
             "la génération de titres, les embeddings et les Transformers."
@@ -193,7 +193,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "challenge-qrt",
-        "title": "Challenge QRT — analyse de survie et modélisation",
+        "title": "Challenge QRT - analyse de survie et modélisation",
         "summary": (
             "Analyse de survie et modélisation statistique réalisées dans le cadre "
             "d'un challenge de données."
@@ -216,7 +216,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "inference-reseau",
-        "title": "Inférence de réseau — notebooks et scripts d'analyse",
+        "title": "Inférence de réseau - notebooks et scripts d'analyse",
         "summary": (
             "Travaux d'étude sur un problème d'inférence de réseau : analyse, diagnostic "
             "et génération de prédictions avec CatBoost."
@@ -240,7 +240,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "detection-qtl-r",
-        "title": "Détection de QTL en R — mini-projet annuel",
+        "title": "Détection de QTL en R",
         "summary": "Projet de détection de QTL (loci de caractères quantitatifs) réalisé en R.",
         "description": (
             "Mini-projet annuel de biostatistique consacré à la détection de QTL, réalisé "
@@ -258,7 +258,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "statistiques-grande-dimension",
-        "title": "Statistiques en grande dimension — analyses en R",
+        "title": "Statistiques en grande dimension en R",
         "summary": (
             "Analyses statistiques en grande dimension en R sur des jeux de données omiques, "
             "protéiques et de survie."
@@ -280,7 +280,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "catpca-shiny",
-        "title": "Dashboard CATPCA — application Shiny en R",
+        "title": "Dashboard CATPCA - application Shiny en R",
         "summary": (
             "Application Shiny interactive pour l'analyse en composantes principales "
             "catégorielles."
@@ -303,7 +303,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "etude-de-cas-r-multivariee",
-        "title": "Étude de cas en R — ANOVA multivariée et analyse bayésienne",
+        "title": "Étude de cas en R - ANOVA multivariée et analyse bayésienne",
         "summary": (
             "Scripts R d'analyse statistique multivariée et bayésienne avec jeux de données "
             "de travail."
@@ -325,29 +325,117 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "modelisation-bayesienne",
-        "title": "Modélisation bayésienne — scripts R",
+        "title": "Modélisation bayésienne en R",
         "summary": (
-            "Exercices R de modélisation bayésienne : lois a priori, modèles autorégressifs "
-            "et méthodes de simulation."
+            "Modélisation statistique bayésienne en R, des lois a priori à l'inférence "
+            "a posteriori, avec modèles autorégressifs et simulation Monte-Carlo."
         ),
         "description": (
-            "Scripts R d'étude portant sur les lois a priori, les modèles autorégressifs et "
-            "les méthodes de simulation en statistique bayésienne."
+            "Développer des modèles statistiques bayésiens en R en formulant des lois a "
+            "priori et en étudiant l'inférence a posteriori. Étudier des modèles "
+            "autorégressifs et mettre en œuvre des méthodes de simulation de type "
+            "Monte-Carlo pour explorer les distributions et estimer les paramètres."
         ),
-        "skills": "R, statistique bayésienne, modèles autorégressifs, méthodes de simulation",
+        "skills": (
+            "Statistique bayésienne, inférence bayésienne, lois a priori, inférence "
+            "a posteriori, modèles autorégressifs, Monte-Carlo, simulation MCMC, R"
+        ),
         "keywords": (
-            "bayésien, bayésienne, bayesian, inférence bayésienne, loi a priori, prior, MCMC, "
-            "autorégressif, séries temporelles, time series"
+            "bayésien, bayésienne, bayesian, inférence bayésienne, loi a priori, prior, "
+            "inférence a posteriori, posterior, Monte-Carlo, Monte Carlo, simulation, MCMC, "
+            "Gibbs, Metropolis-Hastings, acceptation-rejet, autorégressif, séries temporelles, "
+            "time series, R, statistique, statistiques, modélisation statistique"
         ),
         "highlights": (
-            "Lois a priori et modèles autorégressifs en R",
-            "Méthodes de simulation pour l'inférence bayésienne",
+            "Formulation de modèles bayésiens à partir de lois a priori et étude de l'inférence a posteriori",
+            "Étude de modèles autorégressifs en R",
+            "Mise en œuvre de méthodes de simulation Monte-Carlo pour l'inférence bayésienne",
+        ),
+        "public_url": "",
+    },
+    {
+        "slug": "pbc-rstan-survival",
+        "title": "Survie clinique bayésienne - modèle Weibull avec RStan",
+        "summary": (
+            "Modèle Weibull AFT avec censure à droite pour étudier la survie "
+            "dans l'essai historique PBC."
+        ),
+        "description": (
+            "Analyse reproductible en R et Stan du sous-ensemble randomisé de "
+            "312 participants du jeu survival::pbc. Le modèle Weibull AFT prend "
+            "en compte la censure à droite et ajuste l'association du traitement "
+            "par D-pénicillamine, de l'âge, de la log-bilirubine et de l'albumine "
+            "avec le temps avant transplantation ou décès. Quatre chaînes de "
+            "2 000 itérations (1 000 de warmup) ont donné zéro divergence et un "
+            "R-hat maximal de 1,0008. Le rapport de temps médian du traitement "
+            "est 1,06 (intervalle crédible à 95 % : 0,85–1,31) ; l'intervalle "
+            "inclut 1, et l'analyse ne permet pas de conclusion thérapeutique."
+        ),
+        "skills": (
+            "R, RStan, Stan, statistique bayésienne, survie, analyse de survie, "
+            "modèle Weibull, modèle AFT, données censurées, MCMC, diagnostic "
+            "de convergence, biostatistique"
+        ),
+        "keywords": (
+            "bayésien, bayésienne, bayesian, RStan, Stan, biostatistique, "
+            "biostatistics, survie, survival analysis, analyse de survie, "
+            "modèle de survie, Weibull, AFT, accelerated failure time, "
+            "censure, censored data, données censurées, essai clinique, "
+            "clinical trial, MCMC, convergence, R-hat, santé, médical"
+        ),
+        "highlights": (
+            "Modèle Weibull AFT avec vraisemblance adaptée à la censure à droite",
+            "Analyse de 312 participants randomisés du jeu survival::pbc",
+            "Quatre chaînes : zéro divergence et R-hat maximal de 1,0008",
+            "Rapport de temps médian de 1,06, IC crédible à 95 % [0,85 ; 1,31]",
+        ),
+        "public_url": "",
+    },
+    {
+        "slug": "prevision-solaire-bayesienne",
+        "title": "Prévision solaire bayésienne - régression et Gibbs en R/Python",
+        "summary": (
+            "Régression linéaire bayésienne conjuguée pour prévoir la production "
+            "solaire à 15 minutes avec incertitude prédictive."
+        ),
+        "description": (
+            "Deux implémentations reproductibles en Python et R d'une régression "
+            "linéaire bayésienne Normal-Inverse-Gamma échantillonnée par Gibbs. "
+            "Le modèle prédit la puissance agrégée des centrales pendant la "
+            "journée, à partir de la puissance et des variables météorologiques "
+            "disponibles au moment de la prédiction. Sur un test chronologique "
+            "commun de 826 observations, la MAE est de 2 420,75 en Python et "
+            "2 425,35 en R, contre 2 495,88 pour la persistance ; les intervalles "
+            "prédictifs à 95 % couvrent respectivement 96,0 % et 95,9 % des "
+            "observations. Il s'agit d'une expérience sur environ 34 jours et "
+            "deux centrales, pas d'un modèle opérationnel ni d'une prévision à "
+            "long horizon."
+        ),
+        "skills": (
+            "Python, R, statistique bayésienne, régression linéaire, "
+            "Normal-Inverse-Gamma, échantillonnage de Gibbs, MCMC, "
+            "prévision probabiliste, intervalles prédictifs, séries temporelles, "
+            "énergie solaire, pandas, NumPy"
+        ),
+        "keywords": (
+            "bayésien, bayésienne, bayesian, Gibbs, MCMC, régression bayésienne, "
+            "bayesian regression, régression linéaire, prédiction, prévision, "
+            "forecast, forecasting, énergie solaire, solaire, photovoltaïque, "
+            "solar, renewable energy, météo, time series, séries "
+            "temporelles, incertitude, probabiliste, intervalle prédictif, "
+            "Normal-Inverse-Gamma, production énergétique"
+        ),
+        "highlights": (
+            "Implémentations cohérentes en R et Python avec échantillonnage de Gibbs",
+            "Prévision à 15 minutes évaluée sur un test chronologique de 826 observations",
+            "MAE Python/R inférieure à la référence de persistance sur ce test",
+            "Couverture des intervalles prédictifs à 95 % proche de 96 %",
         ),
         "public_url": "",
     },
     {
         "slug": "machine-deep-learning-notebooks",
-        "title": "Machine learning et deep learning — notebooks de travaux pratiques",
+        "title": "Machine learning et deep learning (arbres, CNN, segmentation)",
         "summary": (
             "Collection de notebooks : arbres, forêts aléatoires, réseaux de neurones, CNN, "
             "segmentation, détection d'images et classification d'activité humaine."
@@ -355,13 +443,14 @@ PROJECT_SEEDS = (
         "description": (
             "Notebooks d'étude couvrant CART et bagging, forêts aléatoires, approximation par "
             "noyaux, classification par réseau de neurones, CNN, détection et segmentation "
-            "d'images, classification d'activités humaines, données NetCDF et "
-            "physics-informed machine learning. Ce sont des travaux pratiques, pas un projet "
-            "logiciel unique."
+            "d'images, classification d'activités humaines, ainsi que l'ouverture et "
+            "l'inspection de fichiers NetCDF avec xarray dans un notebook d'étude. "
+            "Le dépôt comprend aussi un notebook de physics-informed machine learning. "
+            "Ce sont des travaux pratiques, pas un projet logiciel unique."
         ),
         "skills": (
             "Python, scikit-learn, réseaux de neurones, CNN, forêts aléatoires, "
-            "segmentation d'images, classification"
+            "segmentation d'images, classification, NetCDF, xarray"
         ),
         "keywords": (
             "machine learning, apprentissage automatique, deep learning, réseau de neurones, "
@@ -372,12 +461,13 @@ PROJECT_SEEDS = (
         "highlights": (
             "Notebooks sur les arbres, les forêts aléatoires et les réseaux de neurones",
             "Classification d'activités physiques à partir de capteurs de smartphone",
+            "Ouverture et inspection de fichiers NetCDF avec xarray dans un notebook d'étude",
         ),
         "public_url": "",
     },
     {
         "slug": "spark-mapreduce",
-        "title": "Spark et MapReduce — traitement de données volumineuses",
+        "title": "Spark et MapReduce - traitement de données volumineuses",
         "summary": "Exercices MapReduce (mapper/reducer) et PySpark avec Spark SQL.",
         "description": (
             "Deux notebooks d'exercices : un traitement de type mapper/reducer et des "
@@ -397,7 +487,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "programmation-concurrente-python",
-        "title": "Programmation concurrente et calcul en Python",
+        "title": "Calcul parallèle en Python",
         "summary": (
             "Exercices sur les threads, le multiprocessing, asyncio et la communication "
             "entre processus."
@@ -420,7 +510,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "traitement-image-wiener",
-        "title": "Traitement d'image — filtre de Wiener et mesures de netteté",
+        "title": "Traitement d'image - filtre de Wiener et mesures de netteté",
         "summary": (
             "Filtrage d'images (filtre de Wiener, domaine fréquentiel) et analyse de scores "
             "de netteté."
@@ -443,7 +533,7 @@ PROJECT_SEEDS = (
     },
     {
         "slug": "flask-partage-topics",
-        "title": "Application Flask de partage de topics",
+        "title": "Application web Flask - topics et liens (JSON, pytest)",
         "summary": (
             "Application Flask qui affiche des topics et des liens depuis un fichier JSON "
             "local, avec tests de routes."
@@ -460,6 +550,80 @@ PROJECT_SEEDS = (
         "highlights": (
             "Application web Flask avec tests pytest des routes",
             "Configuration par variables d'environnement, exécution locale par défaut",
+        ),
+        "public_url": "",
+    },
+    {
+        "slug": "prevision-ventes-multi-sites",
+        "title": "Prévision des ventes multi-sites - Parker Aerospace",
+        "summary": (
+            "Analyse et prévision des ventes de six sites, avec tableau de bord interactif "
+            "et déploiement."
+        ),
+        "description": (
+            "Participation à l'extraction et au traitement par lots des données DB2, à la "
+            "création d'un tableau de bord interactif Python/Dash, aux tests et au déploiement "
+            "avec Azure DevOps et Azure. Comparaison d'un réseau de neurones, de Gradient "
+            "Boosting et d'une régression pénalisée. Résultats détaillés confidentiels."
+        ),
+        "skills": "SQL, DB2, Python, Dash, machine learning, Azure DevOps, Azure",
+        "keywords": (
+            "prévision des ventes, forecasting, séries temporelles, tableau de bord, dash, "
+            "db2, gradient boosting, régression pénalisée, azure, déploiement"
+        ),
+        "highlights": (
+            "Extraction et traitement par lots des données DB2",
+            "Tableau de bord interactif avec prévisions téléchargeables",
+        ),
+        "public_url": "",
+    },
+    {
+        "slug": "challenge-sncf-trafic",
+        "title": "Challenge SNCF - prévision du trafic ferroviaire",
+        "summary": (
+            "Analyse exploratoire et prévision du trafic ferroviaire avec SARIMA et XGBoost "
+            "(MAE de 0,8)."
+        ),
+        "description": (
+            "Analyse exploratoire et modélisation prédictive du trafic ferroviaire avec "
+            "SARIMA et XGBoost, sur les données disponibles sur le site du challenge."
+        ),
+        "skills": "Python, SARIMA, XGBoost, séries temporelles",
+        "keywords": (
+            "séries temporelles, time series, sarima, xgboost, prévision, forecasting, "
+            "transport, trafic ferroviaire"
+        ),
+        "highlights": (
+            "Comparaison d'un modèle SARIMA et d'un modèle XGBoost",
+            "MAE de 0,8 sur les données du challenge",
+        ),
+        "public_url": "",
+    },
+    {
+        "slug": "agent-candidatures-llm",
+        "title": "Agent de candidatures basé sur LLM - génération de CV et de lettres",
+        "summary": (
+            "Application Flask qui génère des CV et des lettres adaptés aux offres "
+            "avec des modèles de langage locaux ou via API."
+        ),
+        "description": (
+            "Application personnelle qui analyse une offre d'emploi et génère un CV et une "
+            "lettre de motivation à partir de faits vérifiés. Intégration de modèles de "
+            "langage locaux (Ollama, Qwen) et d'une API (OpenRouter), ingénierie de prompts "
+            "avec contraintes de véracité, sélection de projets pertinents, score de "
+            "correspondance et export PDF compatible ATS. Tests automatisés avec pytest."
+        ),
+        "skills": "Python, Flask, LLM, ingénierie de prompts, Ollama, OpenRouter, NLP, SQLite, pytest",
+        "keywords": (
+            "LLM, large language model, grand modèle de langage, IA générative, generative AI, "
+            "GenAI, prompt engineering, RAG, retrieval augmented generation, NLP, Ollama, "
+            "OpenRouter, intelligence artificielle"
+        ),
+        "highlights": (
+            "Intégration de LLM locaux (Ollama) et d'une API (OpenRouter)",
+            "Prompts contraints pour limiter les inventions et respecter les faits fournis",
+            "Score de correspondance offre/profil et sélection des projets pertinents",
+            "Tests automatisés avec pytest",
         ),
         "public_url": "",
     },

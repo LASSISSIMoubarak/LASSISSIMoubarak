@@ -5,6 +5,21 @@ SPONTANEOUS_MARKER = "[Candidature spontanée"
 # Mots-clés attendus en général dans le domaine : ils servent à classer les projets
 # et à repérer les compétences à acquérir, jamais comme preuve d'expérience.
 DOMAINS = {
+    "oceanographie": (
+        "Océanographie / données marines",
+        "océanographie, oceanography, océanographie physique, physical oceanography, "
+        "océanographie biologique, sciences marines, marine science, données océaniques, "
+        "données marines, données in situ, bouées, flotteurs, Argo, Copernicus Marine, "
+        "NetCDF, netCDF, xarray, courants, température de la mer, salinité, chlorophylle, "
+        "télédétection, séries temporelles, contrôle qualité, détection d'anomalies, Python, R",
+    ),
+    "aerospace": (
+        "Aérospatial / aéronautique",
+        "aérospatial, aerospace, aéronautique, aeronautics, aviation, avionique, avion, "
+        "aircraft, aerospace engineering, ingénierie aérospatiale, données aéronautiques, "
+        "données industrielles, qualité des données, contrôle qualité, fiabilité, "
+        "séries temporelles, prévision, Power BI, SQL, Python, Azure, ETL",
+    ),
     "biostatistique": (
         "Biostatistique",
         "biostatistique, statistiques, modélisation statistique, analyse de survie, survival, "
@@ -30,7 +45,8 @@ DOMAINS = {
     ),
     "data-engineering": (
         "Data engineering / Big data",
-        "data engineering, big data, Spark, PySpark, MapReduce, Hadoop, ETL, SQL, Python, "
+        "data engineer, ingénieur data, data engineering, ingénierie des données, big data, "
+        "Spark, PySpark, MapReduce, Hadoop, ETL, SQL, Python, "
         "pipeline de données, data warehouse, Docker, Airflow, cloud",
     ),
     "nlp": (

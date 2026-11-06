@@ -1,0 +1,10 @@
+results/*
+!results/python/
+!results/r/
+results/python/*
+!results/python/*.csv
+!results/python/*.json
+!results/python/*.png
+results/r/*
+!results/r/*.csv
+!results/r/*.png

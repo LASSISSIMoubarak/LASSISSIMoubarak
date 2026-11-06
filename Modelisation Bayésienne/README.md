@@ -1,11 +1,21 @@
 # Modélisation bayésienne
 
-Ce dossier rassemble des supports de cours et des exercices de modélisation
-bayésienne. Le sous-dossier `Quelques scripts-20241217/` contient des scripts R
-portant notamment sur les lois a priori, les modèles autorégressifs et des
-méthodes de simulation.
+Ce dossier regroupe les exercices R d'origine et des projets reproductibles
+qui appliquent l'inférence bayésienne à des données biologiques ou réelles.
 
-Les feuilles de cours PDF et les scripts sont des ressources d'étude, pas un
-projet logiciel unique avec un environnement commun. Les PDF ne sont pas
-versionnés par les règles Git globales. Vérifie les droits de redistribution
-des supports avant de les publier.
+## Projets
+
+- [Survie clinique avec RStan](./PBC_RStan_Bayes/README.md) — modèle Weibull
+  AFT avec censure à droite sur l'essai historique PBC.
+- [Prévision solaire avec Gibbs en R et Python](./Prévision%20solaire/README.md) —
+  prévision de production à 15 minutes avec incertitude postérieure.
+
+## Exercices et supports
+
+Le sous-dossier `Quelques scripts-20241217/` contient des scripts R sur les lois
+a priori, les modèles autorégressifs et les méthodes de simulation, notamment
+acceptation-rejet, Gibbs et Metropolis-Hastings. Ce sont des exercices
+distincts, pas tous des variantes du même modèle.
+
+Les PDF sont des supports d'étude ; ils ne sont pas recopiés dans les projets
+publiables. Vérifie leurs droits de redistribution avant de les publier.

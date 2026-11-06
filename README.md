@@ -8,6 +8,15 @@ possible, la procédure d'exécution.
 
 ## Projets à découvrir
 
+### Modélisation bayésienne — projets mis en avant
+
+- [Survie clinique bayésienne avec RStan](<./Modelisation Bayésienne/PBC_RStan_Bayes/README.md>) —
+  modèle Weibull AFT avec censure à droite sur les 312 participants randomisés
+  du jeu PBC ; quatre chaînes, aucune divergence et R-hat maximal de 1,0008.
+- [Prévision solaire bayésienne — Python et R](<./Modelisation Bayésienne/Prévision solaire/README.md>) —
+  régression bayésienne avec Gibbs, prévisions à 15 minutes et incertitude
+  prédictive ; évaluée face à la persistance sur un test chronologique.
+
 ### Machine learning et data science
 
 - [Apprentissage par renforcement](<./Reinforcement Learning/README.md>) — j’y
@@ -39,8 +48,9 @@ possible, la procédure d'exécution.
   réseaux et travaux de génétique statistique.
 - [Statistiques](<./Statistiques/README.md>) — programmation concurrente, Big Data,
   challenge de données et exercices de régression.
-- [Modélisation bayésienne](<./Modelisation Bayésienne/README.md>) — supports et
-  scripts R d'exercices.
+- [Modélisation bayésienne](<./Modelisation Bayésienne/README.md>) — projets
+  appliqués en survie clinique et prévision solaire, ainsi que scripts et
+  supports d'exercices.
 - [Projets R](<./R_project/README.md>) — analyses et applications en R.
 
 ### Big Data et traitement d'image

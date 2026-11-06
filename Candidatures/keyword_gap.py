@@ -158,6 +158,18 @@ def analyze_keyword_gap(offer_text, candidate_text):
     return _result(total, covered, missing)
 
 
+def matching_labels(offer_text, text):
+    """Compétences du vocabulaire présentes à la fois dans l'offre et dans `text`."""
+    normalized_offer, normalized_text = normalize(offer_text), normalize(text)
+    return [
+        label
+        for label, variants in SKILL_VOCABULARY.items()
+        if label != "Tableau"
+        and _label_in(normalized_offer, variants)
+        and _label_in(normalized_text, variants)
+    ]
+
+
 def ungrounded_labels(text, candidate_text):
     """Compétences citées dans `text` qui ne figurent nulle part dans les sources du candidat."""
     normalized_text = normalize(text)

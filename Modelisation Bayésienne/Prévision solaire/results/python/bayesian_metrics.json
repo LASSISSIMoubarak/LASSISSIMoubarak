@@ -1,0 +1,37 @@
+{
+  "model": "Daylight Bayesian linear regression with Normal-Inverse-Gamma prior",
+  "sampler": "Gibbs",
+  "target": "daylight aggregate AC_POWER at t+15 minutes",
+  "daylight_filter": "irradiation at prediction time >= 0.1",
+  "features_at_prediction_time": [
+    "log_current_power",
+    "irradiation",
+    "irradiation_change",
+    "ambient_temperature",
+    "module_temperature",
+    "hour_sin",
+    "hour_cos"
+  ],
+  "train_samples_daylight": 1953,
+  "test_samples_daylight": 826,
+  "train_end": "2020-06-07T19:00:00",
+  "test_start": "2020-06-07T19:15:00",
+  "test_end": "2020-06-17T23:45:00",
+  "gibbs_draws_per_plant": 2000,
+  "burn_in_per_plant": 1000,
+  "daylight_test_metrics": {
+    "samples": 826,
+    "bayesian_mae": 2420.7484443956873,
+    "bayesian_rmse": 3294.0388830863067,
+    "bayesian_95_interval_coverage": 0.9600484261501211,
+    "bayesian_95_interval_mean_width": 22633.15278528637,
+    "persistence_mae": 2495.876432133942,
+    "persistence_rmse": 3369.5663943507498
+  },
+  "limitations": [
+    "The public source data covers about 34 days and two plants in India.",
+    "This is a daylight one-step-ahead estimate using current weather, not a long-horizon forecast.",
+    "A Gaussian regression on log-power changes is a simple baseline, not a validated operational model.",
+    "Predictive interval coverage is measured on the held-out period and may be miscalibrated."
+  ]
+}

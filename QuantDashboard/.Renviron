@@ -1,0 +1,4 @@
+NEON_HOST=ep-late-feather-b9ncqsxm-pooler.c-7.eu-central-1.aws.neon.tech
+NEON_DB=neondb
+NEON_USER=neondb_owner
+NEON_PWD=npg_HMdDzZtT6m9v

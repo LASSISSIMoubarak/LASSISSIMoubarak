@@ -169,6 +169,13 @@ versions de dépendances.
 Les unités de puissance des fichiers sont reprises telles quelles dans les
 métriques MAE/RMSE.
 
+## Projet de prévision bayésienne
+
+L'expérience de régression bayésienne avec Gibbs, en Python et en R, a été
+regroupée dans le dossier [Modélisation bayésienne](../Modelisation%20Bay%C3%A9sienne/Pr%C3%A9vision%20solaire/README.md).
+Ce projet SolarWatch conserve les données et le pipeline de surveillance ; les
+scripts bayésiens et leurs résultats sont maintenus séparément.
+
 ## Livrables générés
 
 Le pipeline crée `outputs/` (non versionné) :
