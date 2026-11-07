@@ -3,11 +3,11 @@
 Ce dossier regroupe plusieurs travaux autour du filtrage et de l'analyse
 d'images :
 
-- `pythonTraitement_d'image.py` — démonstration d'un filtre de Wiener.
-- `Traitement_d'image_TP_Moubarak_LASSISSI.py` — script de travaux pratiques.
-- `Signale_filtrage/` — exemples de filtrage dans le domaine fréquentiel.
-- `Image_folder/` — images d'entrée d'exercices.
-- `analyse_scores_nettete.ipynb` et `rapport_nettete.tex` — analyse de mesures
+- `pythonTraitement_d'image.py` - démonstration d'un filtre de Wiener.
+- `Traitement_d'image_TP_Moubarak_LASSISSI.py` - script de travaux pratiques.
+- `Signale_filtrage/` - exemples de filtrage dans le domaine fréquentiel.
+- `Image_folder/` - images d'entrée d'exercices.
+- `analyse_scores_nettete.ipynb` et `rapport_nettete.tex` - analyse de mesures
   de netteté et rapport associé.
 
 Pour le script de filtre de Wiener, installe `numpy`, `opencv-python` et

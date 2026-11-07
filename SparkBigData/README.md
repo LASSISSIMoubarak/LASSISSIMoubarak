@@ -2,9 +2,9 @@
 
 Deux notebooks d'exercices sont regroupés dans ce dossier :
 
-- [MapReduce](<./Map_reduce/Moubarak_LASSISSI__MapReduce.ipynb>) — exercice
+- [MapReduce](<./Map_reduce/Moubarak_LASSISSI__MapReduce.ipynb>) - exercice
   d'analyse avec un traitement de type mapper/reducer.
-- [PySpark](<./PySpark/04_pyspark_movie_exercises.ipynb>) — exercices de
+- [PySpark](<./PySpark/04_pyspark_movie_exercises.ipynb>) - exercices de
   chargement, transformation et agrégation avec Spark SQL.
 
 Les dépendances attendues sont propres à chaque notebook. Le notebook PySpark

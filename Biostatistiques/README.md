@@ -5,12 +5,15 @@ propres scripts, notebooks et éventuelles données locales.
 
 ## Projets
 
-- [Data Challenge QRT](<./DATA CHALLENGE QRT/README.md>) — analyse de survie,
+- [Data Challenge QRT](<./DATA CHALLENGE QRT/README.md>) - analyse de survie,
   préparation de variables et modélisation dans des notebooks.
-- [Inference reseau](<./Inference reseau/README.md>) — scripts et notebooks
+- [Inference reseau](<./Inference reseau/README.md>) - scripts et notebooks
   d'inférence et d'analyse de réseaux.
-- `Mini Projet Annuel/` — projet de détection de QTL en R.
-- `Statistiques en grande dimension/` — analyses statistiques en grande
+- [NIR Spectra Analysis: PCR, PLS, and Shiny Demo](<./Statistiques en grande dimension/README_GASOLINE_NIR.md>) -
+  projet R de chimiométrie sur des spectres NIR d'essence, comparant PCR et PLS
+  et proposant une démonstration interactive Shiny.
+- `Mini Projet Annuel/` - projet de détection de QTL en R.
+- `Statistiques en grande dimension/` - analyses statistiques en grande
   dimension et fichiers de données associés.
 
 Les données de challenge, prédictions, journaux et résultats ne sont pas tous

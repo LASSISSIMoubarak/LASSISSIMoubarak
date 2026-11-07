@@ -1,4 +1,4 @@
-# Partie 2 — Résumé court
+# Partie 2 - Résumé court
 
 - Fichier : `Partie2.py`
 - Entrée : `commandes.txt` (format : `<délai_en_secondes> <boisson1>,<boisson2>,...`)

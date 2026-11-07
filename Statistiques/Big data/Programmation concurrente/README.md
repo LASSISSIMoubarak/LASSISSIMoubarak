@@ -1,4 +1,4 @@
-# Programmation concurrente — mini-projet "Serveur / Bariste"
+# Programmation concurrente - mini-projet "Serveur / Bariste"
 
 Ce dossier contient une série d'exercices progressifs pour explorer la programmation concurrente en Python : une version synchrone, une version `asyncio` et des notes pédagogiques.
 

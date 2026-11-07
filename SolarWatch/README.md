@@ -1,4 +1,4 @@
-# SolarWatch — surveillance de performance photovoltaïque
+# SolarWatch - surveillance de performance photovoltaïque
 
 Mini-projet de data science appliquée à la maintenance solaire. À partir des
 mesures d'onduleurs et de météo d'un jeu Kaggle, le pipeline compare la
@@ -16,7 +16,7 @@ hiérarchisées.
 
 ## Données et provenance
 
-Jeu utilisé : [Solar Power Generation Data — Kaggle, Ani Kannal, version 1](https://www.kaggle.com/datasets/anikannal/solar-power-generation-data).
+Jeu utilisé : [Solar Power Generation Data - Kaggle, Ani Kannal, version 1](https://www.kaggle.com/datasets/anikannal/solar-power-generation-data).
 La page Kaggle décrit des données issues de deux centrales en Inde sur 34 jours,
 avec production mesurée au niveau des onduleurs et météo mesurée au niveau de
 chaque centrale. Les données du jeu ne sont pas recopiées dans ce dépôt : la
@@ -180,19 +180,19 @@ scripts bayésiens et leurs résultats sont maintenus séparément.
 
 Le pipeline crée `outputs/` (non versionné) :
 
-- `results.json` — période, volumes, seuils et comptage des alertes ;
-- `alerts.csv` — épisodes, priorité, ratios et écart d'énergie estimé ;
-- `monitoring_samples.csv` — données jointes, indicateurs et scores du modèle ;
-- `lstm_forecasts.csv` — prévisions du jeu test, baseline et résidus LSTM ;
-- `anomaly_signal_comparison.csv` — résultats côte à côte d'Isolation Forest et
+- `results.json` - période, volumes, seuils et comptage des alertes ;
+- `alerts.csv` - épisodes, priorité, ratios et écart d'énergie estimé ;
+- `monitoring_samples.csv` - données jointes, indicateurs et scores du modèle ;
+- `lstm_forecasts.csv` - prévisions du jeu test, baseline et résidus LSTM ;
+- `anomaly_signal_comparison.csv` - résultats côte à côte d'Isolation Forest et
   du signal de résidu LSTM pour chaque mesure de test commune ;
-- `synthetic_scenario_benchmark.csv` et `synthetic_scenario_metrics.json` —
+- `synthetic_scenario_benchmark.csv` et `synthetic_scenario_metrics.json` -
   diagnostics comparés aux étiquettes d'injection simulées, avec matrice de
   confusion pour analyser les baisses locales non signalées ;
-- `plant_1_monitoring.png` et `plant_2_monitoring.png` — production réelle
+- `plant_1_monitoring.png` et `plant_2_monitoring.png` - production réelle
   comparée à la médiane des pairs, avec les relevés candidats surlignés et
   les anomalies Isolation Forest du jeu de test.
-- `plant_1_lstm_forecast.png` et `plant_2_lstm_forecast.png` — vérité test,
+- `plant_1_lstm_forecast.png` et `plant_2_lstm_forecast.png` - vérité test,
   prévision LSTM et baseline des pairs.
 
 Les tests unitaires vérifient le regroupement des épisodes, la durée minimale,

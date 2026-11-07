@@ -5,9 +5,9 @@ qui appliquent l'inférence bayésienne à des données biologiques ou réelles.
 
 ## Projets
 
-- [Survie clinique avec RStan](./PBC_RStan_Bayes/README.md) — modèle Weibull
+- [Survie clinique avec RStan](./PBC_RStan_Bayes/README.md) - modèle Weibull
   AFT avec censure à droite sur l'essai historique PBC.
-- [Prévision solaire avec Gibbs en R et Python](./Prévision%20solaire/README.md) —
+- [Prévision solaire avec Gibbs en R et Python](./Prévision%20solaire/README.md) -
   prévision de production à 15 minutes avec incertitude postérieure.
 
 ## Exercices et supports

@@ -8,62 +8,65 @@ possible, la procédure d'exécution.
 
 ## Projets à découvrir
 
-### Modélisation bayésienne — projets mis en avant
+### Modélisation bayésienne - projets mis en avant
 
-- [Survie clinique bayésienne avec RStan](<./Modelisation Bayésienne/PBC_RStan_Bayes/README.md>) —
+- [Survie clinique bayésienne avec RStan](<./Modelisation Bayésienne/PBC_RStan_Bayes/README.md>) -
   modèle Weibull AFT avec censure à droite sur les 312 participants randomisés
   du jeu PBC ; quatre chaînes, aucune divergence et R-hat maximal de 1,0008.
-- [Prévision solaire bayésienne — Python et R](<./Modelisation Bayésienne/Prévision solaire/README.md>) —
+- [Prévision solaire bayésienne - Python et R](<./Modelisation Bayésienne/Prévision solaire/README.md>) -
   régression bayésienne avec Gibbs, prévisions à 15 minutes et incertitude
   prédictive ; évaluée face à la persistance sur un test chronologique.
 
 ### Machine learning et data science
 
-- [Apprentissage par renforcement](<./Reinforcement Learning/README.md>) — j’y
+- [Apprentissage par renforcement](<./Reinforcement Learning/README.md>) - j’y
   étudie et compare DQN et PPO sur CartPole et un environnement GridWorld que
   j’ai créé, avec des configurations DQN pour LunarLander. J’explore aussi
   différentes variantes et paramètres d’entraînement. Les checkpoints et
   journaux d’expériences restent locaux et ne sont pas versionnés.
-- [MLOps - prédiction du cancer du sein](<./mlops/mlops_breast_cancer/README.md>) —
+- [MLOps - prédiction du cancer du sein](<./mlops/mlops_breast_cancer/README.md>) -
   pipeline reproductible de préparation des données, entraînement et prédiction.
-- [SolarWatch — surveillance photovoltaïque](<./SolarWatch/README.md>) —
+- [SolarWatch - surveillance photovoltaïque](<./SolarWatch/README.md>) -
   détection interprétable et hiérarchisation de sous-performances d'onduleurs
   sur des données Kaggle, avec résultats reproductibles et limites documentées.
-- [Machines et Deep Learning](<./Machines and Deep Learning/README.md>) — notebooks
+- [Machines et Deep Learning](<./Machines and Deep Learning/README.md>) - notebooks
   d'apprentissage automatique, réseaux de neurones et traitement de données.
-- [NLP](<./NLP/README.md>) — travaux pratiques et notebooks autour de la
+- [NLP](<./NLP/README.md>) - travaux pratiques et notebooks autour de la
   classification de fake news, de la génération de titres avec T5, de la
   recherche sémantique par embeddings et des Transformers. J’y présente aussi
   une introduction aux LLM et au RAG, ainsi que des travaux sur l’architecture
   MLP et le suivi d’expériences avec MLflow.
-- [Challenge QRT](<./Biostatistiques/DATA CHALLENGE QRT/README.md>) — analyse de
+- [Challenge QRT](<./Biostatistiques/DATA CHALLENGE QRT/README.md>) - analyse de
   survie et modélisation pour un challenge de données.
 
 ### Statistiques, R et données
 
-- [Tableau de bord BI — transactions en Inde](<./Projet BI/README.md>) —
+- [NIR Spectra Analysis: PCR, PLS, and Shiny Demo](<./Biostatistiques/Statistiques en grande dimension/README_GASOLINE_NIR.md>) -
+  comparaison PCR/PLS sur le jeu public `gasoline`, avec validation croisée LOO,
+  évaluation sur un jeu de test séparé et démonstration interactive Shiny.
+- [Tableau de bord BI - transactions en Inde](<./Projet BI/README.md>) -
   rapport Power BI pour explorer les transactions par secteur d'activité,
   genre, année, âge et État, avec captures d'écran.
-- [Biostatistiques](<./Biostatistiques/README.md>) — challenge QRT, inférence de
+- [Biostatistiques](<./Biostatistiques/README.md>) - challenge QRT, inférence de
   réseaux et travaux de génétique statistique.
-- [Statistiques](<./Statistiques/README.md>) — programmation concurrente, Big Data,
+- [Statistiques](<./Statistiques/README.md>) - programmation concurrente, Big Data,
   challenge de données et exercices de régression.
-- [Modélisation bayésienne](<./Modelisation Bayésienne/README.md>) — projets
+- [Modélisation bayésienne](<./Modelisation Bayésienne/README.md>) - projets
   appliqués en survie clinique et prévision solaire, ainsi que scripts et
   supports d'exercices.
-- [Projets R](<./R_project/README.md>) — analyses et applications en R.
+- [Projets R](<./R_project/README.md>) - analyses et applications en R.
 
 ### Big Data et traitement d'image
 
-- [Spark et MapReduce](<./SparkBigData/README.md>) — notebooks PySpark et Hadoop.
-- [Traitement d'image](<./Traitement d'image/README.md>) — filtrage, restauration et
+- [Spark et MapReduce](<./SparkBigData/README.md>) - notebooks PySpark et Hadoop.
+- [Traitement d'image](<./Traitement d'image/README.md>) - filtrage, restauration et
   mesures de netteté.
-- [Application Flask](<./Flask/Projet Flask/README.md>) — petite application web
+- [Application Flask](<./Flask/Projet Flask/README.md>) - petite application web
   pédagogique de consultation et de fusion de topics.
 
 ### Outil personnel
 
-- [Cap Carrière](<./Candidatures/>) — j’ai développé cet assistant personnel
+- [Cap Carrière](<./Candidatures/>) - j’ai développé cet assistant personnel
   pour gagner du temps dans ma recherche d’emploi. Il me permet d’importer et
   d’évaluer des offres, de suivre mes candidatures et de préparer des brouillons
   de CV et de lettres adaptés à mon profil et à mes expériences. J’automatise

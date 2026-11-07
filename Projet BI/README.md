@@ -1,4 +1,4 @@
-# Analyse des transactions en Inde — tableau de bord Power BI
+# Analyse des transactions en Inde - tableau de bord Power BI
 
 Ce projet présente un tableau de bord interactif réalisé avec Power BI pour
 explorer des transactions par secteur d'activité et par État en Inde.

@@ -2,9 +2,9 @@
 
 Deux travaux distincts sont regroupés ici :
 
-- [NLP Presentation](<./NLP_presentation/README.md>) — support de présentation
+- [NLP Presentation](<./NLP_presentation/README.md>) - support de présentation
   et travaux pratiques.
-- `MLP Architecture/` — scripts d'architecture MLP et fonctions de suivi
+- `MLP Architecture/` - scripts d'architecture MLP et fonctions de suivi
   d'expériences MLflow.
 
 Chaque sous-projet a ses propres dépendances. Consulte le README de la

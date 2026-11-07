@@ -3,9 +3,9 @@
 Ce dossier contient deux notebooks d'étude appliqués à l'analyse de données de
 films :
 
-- `Moubarak_LASSISSI__02_Exe_MapReduce.ipynb` — notebook MapReduce avec Hadoop
+- `Moubarak_LASSISSI__02_Exe_MapReduce.ipynb` - notebook MapReduce avec Hadoop
   Streaming.
-- `04_pyspark_movie_exercises (1).ipynb` — exercices d'analyse PySpark.
+- `04_pyspark_movie_exercises (1).ipynb` - exercices d'analyse PySpark.
 
 ## Prérequis
 
