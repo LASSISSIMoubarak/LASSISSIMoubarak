@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import hmac
 import importlib.util
 import io
@@ -198,6 +199,12 @@ def init_db():
             is_primary INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (application_id, project_id)
         );
+        CREATE TABLE IF NOT EXISTS application_experiences (
+            application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+            experience_key TEXT NOT NULL,
+            is_selected INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (application_id, experience_key)
+        );
         INSERT OR IGNORE INTO profile (id) VALUES (1);
         """
     )
@@ -223,6 +230,67 @@ def init_db():
             for project in PROJECT_SEEDS
         ],
     )
+    database.execute(
+        """UPDATE projects SET title = ?
+           WHERE slug = ? AND title = ?""",
+        (
+            "NIR Spectra Analysis: PCR, PLS, and Shiny Demo",
+            "gasoline-nir-pcr-pls-shiny",
+            "Chimiométrie NIR - PCR et PLS avec Shiny",
+        ),
+    )
+    database.execute(
+        """UPDATE projects SET title = ?
+           WHERE slug = ? AND title = ?""",
+        (
+            "NIR Spectra Analysis: PCR, PLS, and Shiny Demo",
+            "gasoline-nir-pcr-pls-shiny",
+            "Analyse de spectres NIR : PCR, PLS et démonstration Shiny",
+        ),
+    )
+    nir_project = next(
+        project
+        for project in PROJECT_SEEDS
+        if project["slug"] == "gasoline-nir-pcr-pls-shiny"
+    )
+    previous_nir_copy = {
+        "summary": (
+            "Analyse de spectres NIR du jeu gasoline avec modèles PCR/PLS, "
+            "validation croisée et démonstration interactive Shiny."
+        ),
+        "description": (
+            "Projet pédagogique en R fondé sur le jeu public gasoline du package pls : "
+            "prédiction de l'indice d'octane à partir de spectres proche infrarouge. "
+            "Compare PCR et PLS, utilise une validation croisée leave-one-out sur les "
+            "échantillons de calibration et évalue les prédictions sur un échantillon de "
+            "test séparé. Une application Shiny permet d'explorer les spectres, les "
+            "erreurs de validation croisée et les prédictions. Le projet ne porte pas "
+            "sur des digestats et ne valide pas de spectromètre de terrain."
+        ),
+        "skills": (
+            "R, chimiométrie, spectroscopie proche infrarouge, NIR, PCR, PLS, "
+            "validation croisée, RMSEP, RMSE, R², Shiny, pls"
+        ),
+        "highlights": "\n".join(
+            (
+                "Extraction des spectres et de l'indice d'octane depuis le jeu public pls::gasoline",
+                "Comparaison des régressions PCR et PLS avec validation croisée leave-one-out",
+                "Évaluation de la RMSE et du R² sur un échantillon test tenu à part",
+                "Démo Shiny pour explorer les spectres, la validation croisée et les prédictions",
+            )
+        ),
+    }
+    for column, previous_copy in previous_nir_copy.items():
+        updated_copy = (
+            "\n".join(nir_project[column])
+            if column == "highlights"
+            else nir_project[column]
+        )
+        database.execute(
+            f"""UPDATE projects SET {column} = ?
+                WHERE slug = ? AND {column} = ?""",
+            (updated_copy, nir_project["slug"], previous_copy),
+        )
     profile_columns = {
         row["name"] for row in database.execute("PRAGMA table_info(profile)").fetchall()
     }
@@ -365,6 +433,57 @@ def ensure_application_project_choices(application):
     return choices
 
 
+def experience_key(text):
+    normalized = " ".join(text.casefold().split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def ensure_application_experience_choices(application, base_cv):
+    experiences = parse_base_experiences(base_cv or "")
+    database = get_db()
+    existing = {
+        row["experience_key"]: row
+        for row in database.execute(
+            "SELECT experience_key, is_selected FROM application_experiences WHERE application_id = ?",
+            (application["id"],),
+        ).fetchall()
+    }
+    choices = []
+    for experience in experiences:
+        key = experience_key(experience["text"])
+        database.execute(
+            """INSERT OR IGNORE INTO application_experiences
+               (application_id, experience_key, is_selected) VALUES (?, ?, 1)""",
+            (application["id"], key),
+        )
+        choices.append(
+            {
+                **experience,
+                "experience_key": key,
+                "is_selected": existing.get(key, {"is_selected": 1})["is_selected"],
+            }
+        )
+    database.commit()
+    return choices
+
+
+def selected_application_experiences(choices):
+    return [choice for choice in choices if choice["is_selected"]]
+
+
+def save_application_experience_selection(application, choices, submitted_keys):
+    available_keys = {choice["experience_key"] for choice in choices}
+    selected_keys = set(submitted_keys) & available_keys
+    database = get_db()
+    for key in available_keys:
+        database.execute(
+            """UPDATE application_experiences SET is_selected = ?
+               WHERE application_id = ? AND experience_key = ?""",
+            (int(key in selected_keys), application["id"], key),
+        )
+    database.commit()
+
+
 def selected_application_projects(application_id):
     return get_db().execute(
         """SELECT p.*
@@ -387,8 +506,8 @@ def save_application_project_selection(application, submitted_ids, primary_id=No
             continue
         if project_id in available_ids:
             selected_ids.add(project_id)
-    if len(selected_ids) > 2:
-        return "Sélectionne au maximum deux projets pour garder des documents lisibles."
+    if len(selected_ids) > 4:
+        return "Sélectionne au maximum quatre projets pour garder des documents lisibles."
 
     try:
         primary_id = int(primary_id) if primary_id else None
@@ -699,7 +818,7 @@ def english_task(kind):
             "whole list. "
             "SOFTWARE: 8 tools maximum, kept only if requested in the offer or directly useful to its missions. "
             "Projects: include only the candidate's selected, documented personal projects below; include at "
-            "most 2 when relevant, never present them as employment, and copy a public project URL exactly "
+            "most 4 when relevant, never present them as employment, and copy a public project URL exactly "
             "when provided. Do not invent a project or link. "
             "Education: translate degree titles into English and keep each degree from the source resume, one per "
             "entry, with degree, institution and "
@@ -713,9 +832,10 @@ def english_task(kind):
         "project titles, role descriptions, and all ordinary phrases into natural English; never copy a "
         "French title or sentence into the English letter. "
         "The generated body must contain exactly 4 concise prose paragraphs and 140 to 180 words total. "
-        "This count excludes the salutation, interview sentence, closing and signature, which the application "
-        "adds separately. No bullets, headings, numbering, address, date, subject, salutation, closing formula "
-        "or signature. Finish every sentence. "
+        "This count excludes the salutation and signature, which the application adds separately. Do not add "
+        "an interview request, sign-off, formal closing or signature; the candidate can edit the body and paste "
+        "their preferred wording. No bullets, headings, numbering, address, date, subject or salutation. "
+        "Finish every sentence. "
         "When an adapted CV for this offer is provided, it is the controlling source for the letter: use only "
         "the experiences, education, dates, tools, methods and results actually present in that CV. Do not "
         "restore omitted details from older reference documents, embellish a CV statement, or add a new "
@@ -728,7 +848,7 @@ def english_task(kind):
         "optional: mention it only if it is included in the adapted CV and directly relevant to the offer. "
         "If mentioned, clearly call it a personal project, translate its descriptive title and details into "
         "English, and use no result, method or tool absent from the adapted CV. Paragraph 4: give one brief, "
-        "evidence-based closing thought; do not add an interview request because the application appends it. "
+        "brief, evidence-based final point; do not add an interview request, sign-off or formal closing. "
         "Use past-tense verbs for completed roles. Never calculate years of experience from dates. Do not "
         "claim a required skill that the CV does not prove. Do not describe association, prediction or network "
         "reconstruction as causal evidence unless the CV explicitly supports that conclusion. "
@@ -747,6 +867,7 @@ def build_prompt(
     selected_projects=(),
     style_example_limit=MAX_STYLE_EXAMPLES,
     style_example_char_limit=MAX_STYLE_EXAMPLE_CHARS,
+    selected_experiences=None,
 ):
     profile_text = "\n".join(
         [
@@ -768,6 +889,17 @@ def build_prompt(
             "\nProfil alternatif déjà validé par le candidat et correspondant au poste visé. "
             "Utilise-le comme base de la rubrique PROFIL, sans ajouter de fait :\n"
             f"{selected_profile_variant}"
+        )
+    if selected_experiences is not None:
+        selected_names = [experience["organisation"] for experience in selected_experiences]
+        profile_text += (
+            "\nExpériences professionnelles autorisées pour cette candidature :\n"
+            + (
+                "\n".join(f"- {name}" for name in selected_names)
+                if selected_names
+                else "- Aucune expérience professionnelle sélectionnée."
+            )
+            + "\nN'inclus aucune autre expérience professionnelle provenant des CV ou documents de référence."
         )
     achievements = profile_list(profile, "achievements")
     if achievements:
@@ -840,6 +972,7 @@ def build_prompt(
                         "Ne calcule ni n'invente jamais un nombre d'années d'expérience (pas de « 3+ ans »), sauf s'il est écrit tel quel dans la source.\n"
             "2. Dans la rubrique EXPERIENCES PROFESSIONNELLES, intègre systématiquement pour chaque poste les aspects d'industrialisation "
             "et de production (ex: Docker, Azure DevOps, MLOps, SQL, pipelines de données, Power Automate) si les sources les mentionnent. "
+            "Pour chaque expérience retenue, garde au plus deux puces courtes et pertinentes. "
             "Chaque expérience doit se terminer par une ligne unique au format exact : 'Compétences : outil1, outil2, outil3'.\n"
             "Garde l'intitulé, l'employeur et les dates documentées ensemble au début de chaque expérience, avant les puces ; "
             "ne place jamais les dates d'une expérience dans une autre rubrique. Emploie le passé pour les postes terminés "
@@ -873,9 +1006,10 @@ def build_prompt(
             "peuvent rester dans leur forme documentée. Traduis en français les titres descriptifs de projets et toutes les "
             "phrases descriptives ; ne copie aucune phrase anglaise du CV ou des références. "
             "Le corps généré doit contenir exactement 4 paragraphes de prose et 140 à 180 mots au total. Ce compte exclut "
-            "l'appel, la phrase d'entretien, la formule de politesse et la signature, ajoutés séparément par l'application. "
-            "Aucune liste, aucun titre, sous-titre, numérotation, coordonnées, date, objet, appel, formule de politesse "
-            "ni signature dans ta réponse. Termine toutes les phrases. "
+            "l'appel et la signature, ajoutés séparément par l'application. N'ajoute ni demande d'entretien, ni formule "
+            "de politesse finale, ni signature ; le candidat pourra modifier le corps et coller le texte de son choix. "
+            "Aucune liste, aucun titre, sous-titre, numérotation, coordonnées, date, objet ni appel dans ta réponse. "
+            "Termine toutes les phrases. "
             "Quand un CV adapté à cette offre est fourni, il est la source de référence prioritaire et limite les faits "
             "utilisables : ne reprends que les expériences, formations, dates, outils, méthodes et résultats qui y figurent. "
             "Ne réintroduis pas des détails omis en t'appuyant sur d'anciens CV, n'amplifie pas une formulation du CV et "
@@ -887,8 +1021,8 @@ def build_prompt(
             "la contribution concrète qu'elles permettent. Un projet personnel sélectionné est facultatif : ne le mentionne que s'il "
             "figure dans le CV adapté et qu'il est pertinent pour l'offre. Dans ce cas, identifie-le comme projet personnel et traduis "
             "son titre descriptif et ses détails en français ; n'ajoute aucun résultat, méthode ou outil absent du CV. "
-            "Paragraphe 4 : termine par une phrase brève, professionnelle et appuyée par les faits ; ne demande pas d'entretien, "
-            "car l'application ajoute cette phrase. Utilise le passé pour les postes terminés et ne calcule jamais une durée "
+            "Paragraphe 4 : termine par une phrase brève, professionnelle et appuyée par les faits ; ne demande pas d'entretien "
+            "et n'ajoute pas de formule de politesse finale ni de signature. Utilise le passé pour les postes terminés et ne calcule jamais une durée "
             "d'expérience à partir de dates. Ne revendique pas une compétence exigée que le CV ne prouve pas. Ne présente pas une "
             "association, une prédiction ou une reconstruction de réseau comme une preuve de causalité sans appui explicite du CV. "
             "Ne répète pas un exemple et ne paraphrase pas le CV ligne par ligne. N'invente aucun fait, chiffre, diplôme, poste, "
@@ -1011,7 +1145,7 @@ def inject_selected_projects(cv_content, projects):
         return "\n".join(lines).strip()
 
     block = ["PROJETS"]
-    for project in projects[:1]:
+    for project in projects[:4]:
         result = project_highlights(project)
         project_summary = remove_hedged_phrases(project["summary"])
         if result and re.search(r"\d", result[0]):
@@ -1053,7 +1187,7 @@ def normalize_dashes(text):
     return re.sub(r"(?<=\S)(?:—|–|--+)(?=\S)", "-", text)
 
 
-def clean_letter_draft(content, profile_name=""):
+def clean_letter_draft(content, profile_name="", remove_generated_signoff=False):
     cv_headings = {
         "A PROPOS", "PROFIL", "COMPETENCES", "COMPETENCES CLES", "EXPERIENCE",
         "EXPERIENCES", "EXPERIENCES PROFESSIONNELLES", "FORMATION", "PROJETS", "LANGUES",
@@ -1083,13 +1217,14 @@ def clean_letter_draft(content, profile_name=""):
             continue
         if normalized.startswith(("OBJET :", "OBJECT:", "SUBJECT:", "RE:")):
             continue
-        if normalized.startswith((
+        if remove_generated_signoff and normalized.startswith((
             "JE VOUS PRIE D'AGREER", "VEUILLEZ AGREER", "JE VOUS PRIE DE CROIRE",
             "DANS L'ATTENTE DE VOTRE REPONSE", "JE RESTE A VOTRE DISPOSITION",
-            "THANK YOU FOR YOUR TIME", "THANK YOU FOR YOUR CONSIDERATION", "I LOOK FORWARD TO HEARING",
+            "IMPATIENT DE VOUS RENCONTRER", "JE SERAI HEUREUX DE VOUS RENCONTRER",
+            "I LOOK FORWARD TO", "THANK YOU FOR YOUR TIME", "THANK YOU FOR YOUR CONSIDERATION",
         )):
             continue
-        if re.fullmatch(
+        if remove_generated_signoff and re.fullmatch(
             r"(BONJOUR|BONSOIR|CORDIALEMENT|SINCEREMENT|BIEN CORDIALEMENT|SINCERELY|YOURS SINCERELY|"
             r"YOURS FAITHFULLY|BEST REGARDS|KIND REGARDS|REGARDS|BEST|HELLO)[,.! ]*",
             normalized,
@@ -1483,11 +1618,6 @@ LETTER_TEXT = {
         "subject_label": "Objet :",
         "subject": "Candidature au poste de {role}",
         "salutation": "Madame, Monsieur,",
-        "closing": "Je vous prie d’agréer, Madame, Monsieur, l’expression de mes salutations distinguées.",
-        "interview": (
-            "Impatient de vous rencontrer lors d’un entretien, je serai heureux de vous exposer "
-            "plus en détail ma motivation et la manière dont je pourrai contribuer à vos projets."
-        ),
         "title": "Lettre de motivation",
     },
     "en": {
@@ -1495,11 +1625,6 @@ LETTER_TEXT = {
         "subject_label": "Subject:",
         "subject": "Application for the position of {role}",
         "salutation": "Dear Hiring Manager,",
-        "closing": "Yours sincerely,",
-        "interview": (
-            "I would welcome the opportunity to discuss my motivation in an interview and explain "
-            "how I can contribute to your projects."
-        ),
         "title": "Cover letter",
     },
 }
@@ -1535,8 +1660,6 @@ def letter_body_paragraphs(profile, content, language="fr"):
             paragraphs[-1] = complete.group(1).strip()
             break
         paragraphs.pop()
-    if paragraphs:
-        paragraphs.append(LETTER_TEXT[language]["interview"])
     return paragraphs
 
 
@@ -1595,7 +1718,6 @@ def make_letter_docx(profile, application, content):
     document.add_paragraph(text["salutation"])
     for paragraph_text in letter_body_paragraphs(profile, content, language):
         document.add_paragraph(paragraph_text)
-    document.add_paragraph(text["closing"])
     document.add_paragraph(profile["full_name"].strip() or "[Nom a completer]")
 
     output = io.BytesIO()
@@ -1740,7 +1862,6 @@ def make_pdf(profile, application, content, kind):
         story.append(Paragraph(text_labels["salutation"], styles["body"]))
         for paragraph in letter_body_paragraphs(profile, content, language):
             story.append(Paragraph(escape(paragraph), styles["body"]))
-        story.append(Paragraph(text_labels["closing"], styles["body"]))
         story.append(Spacer(1, 8))
         story.append(Paragraph(name, styles["body"]))
 
@@ -2455,7 +2576,7 @@ def make_cv_latex(profile, application, content, layout=None):
             body.extend(latex_entries(lines, max_items=2, max_entries=4, offer_text=offer_text))
         elif key == "PROJETS":
             body.extend(
-                latex_entries(lines, max_items=2, max_entries=1, max_header_chars=160, offer_text=offer_text)
+                latex_entries(lines, max_items=2, max_entries=4, max_header_chars=160, offer_text=offer_text)
             )
         elif key == "LOGICIELS":
             tools, seen = [], set()
@@ -2571,7 +2692,6 @@ def make_letter_latex(profile, application, content):
         r"\vspace{6pt}",
         esc(text["salutation"]) + "\\par",
         paragraphs + r"\par",
-        esc(text["closing"]) + "\\par",
         r"\vspace{14pt}",
         r"\begin{flushright}\bfseries " + esc(name) + r"\end{flushright}",
         r"\end{document}",
@@ -2643,10 +2763,15 @@ def index():
     selected = get_application(selected_id) if selected_id else None
     if selected is None and applications:
         selected = applications[0]
+    profile = get_profile()
     project_choices = (
         ensure_application_project_choices(selected) if selected else []
     )
-    profile = get_profile()
+    experience_choices = (
+        ensure_application_experience_choices(selected, profile["base_cv"])
+        if selected
+        else []
+    )
     reference_documents = get_reference_documents()
     has_resume = bool(profile["resume_source"].strip() or reference_documents)
     ollama = ollama_status()
@@ -2667,6 +2792,7 @@ def index():
         cv_accents=CV_ACCENTS,
         has_resume=has_resume,
         project_choices=project_choices,
+        experience_choices=experience_choices,
         project_catalog_count=len(get_projects()),
         has_job_description=bool(selected and selected["job_description"].strip()),
         can_generate=bool(has_resume and selected and selected["job_description"].strip()),
@@ -2773,6 +2899,22 @@ def save_application_projects(application_id):
         f"{len(selected_ids)} projet(s) retenu(s) pour le CV et la lettre.",
         "success",
     )
+    return redirect(url_for("index", selected=application_id))
+
+
+@app.post("/applications/<int:application_id>/experiences")
+def save_application_experiences(application_id):
+    application = get_application(application_id)
+    if application is None:
+        flash("Cette candidature n'existe pas.", "error")
+        return redirect(url_for("index"))
+    choices = ensure_application_experience_choices(
+        application, get_profile()["base_cv"]
+    )
+    save_application_experience_selection(
+        application, choices, request.form.getlist("experience_keys")
+    )
+    flash("Sélection d'expériences enregistrée pour cette candidature.", "success")
     return redirect(url_for("index", selected=application_id))
 
 
@@ -3287,6 +3429,23 @@ def generate_draft(application_id):
         if error:
             flash(error, "error")
             return redirect(url_for("index", selected=application_id))
+    experience_choices = ensure_application_experience_choices(
+        application, profile["base_cv"]
+    )
+    if request.form.get("experience_selection_submitted") == "1":
+        save_application_experience_selection(
+            application,
+            experience_choices,
+            request.form.getlist("experience_keys"),
+        )
+        experience_choices = ensure_application_experience_choices(
+            application, profile["base_cv"]
+        )
+    selected_experiences = (
+        selected_application_experiences(experience_choices)
+        if experience_choices
+        else None
+    )
     language = resolve_language(request.form.get("language", "auto"), application)
     try:
         max_tokens = 900 if kind == "cv" else 600
@@ -3310,6 +3469,7 @@ def generate_draft(application_id):
             selected_projects,
             example_limit,
             example_char_limit,
+            selected_experiences=selected_experiences,
         )
         if provider == "copilot":
             draft = generate_with_copilot(prompt, max_tokens)
@@ -3319,11 +3479,17 @@ def generate_draft(application_id):
             draft = generate_with_ollama(prompt, max_tokens, num_ctx=OLLAMA_CONTEXT_WITH_EXAMPLES)
         else:
             draft = generate_with_ollama(prompt, max_tokens)
-        draft = clean_cv_draft(draft) if kind == "cv" else clean_letter_draft(draft)
+        draft = (
+            clean_cv_draft(draft)
+            if kind == "cv"
+            else clean_letter_draft(draft, remove_generated_signoff=True)
+        )
         if kind == "cv":
             if language == "fr":
                 draft = frenchify_degree_titles(draft)
             draft = sort_cv_experience_sections(draft)
+            if selected_experiences is not None:
+                draft = filter_cv_experience_section(draft, selected_experiences)
             if language == "fr":
                 base_cv = profile["base_cv"] if "base_cv" in profile.keys() else ""
                 _, profile_variants = split_profile_variants(base_cv or "")
@@ -3404,13 +3570,73 @@ def parse_base_experiences(base_cv):
         current["header"].append(line)
     return [
         {
-            "organisation": entry["header"][1] if len(entry["header"]) > 1 else split_trailing_date(entry["header"][0])[0],
+            "title": entry["header"][0],
+            "organisation": (
+                entry["header"][1]
+                if len(entry["header"]) > 1
+                else split_trailing_date(entry["header"][0])[0]
+            ),
             "bullets": entry["bullets"],
             "text": " ".join(entry["header"] + entry["bullets"]),
+            "experience_key": experience_key(" ".join(entry["header"] + entry["bullets"])),
         }
         for entry in entries
         if entry["bullets"]
     ]
+
+
+def filter_cv_experience_section(content, selected_experiences):
+    allowed_organisations = {
+        " ".join(experience["organisation"].casefold().split())
+        for experience in selected_experiences
+        if experience["organisation"].strip()
+    }
+    lines = content.splitlines()
+    section_starts = []
+    for index, line in enumerate(lines):
+        heading = normalize_heading(line)
+        heading = CV_SECTION_ALIASES.get(heading, heading)
+        if heading in CV_SECTION_TITLES:
+            section_starts.append((index, heading))
+
+    for position, (start, heading) in reversed(list(enumerate(section_starts))):
+        if heading != "EXPERIENCES PROFESSIONNELLES":
+            continue
+        end = section_starts[position + 1][0] if position + 1 < len(section_starts) else len(lines)
+        entries, current, header, has_details = [], [], [], False
+
+        def flush():
+            nonlocal current, header, has_details
+            if current:
+                entries.append((header, current))
+            current, header, has_details = [], [], False
+
+        for line in lines[start + 1:end]:
+            skills_match = CV_SKILLS_LINE.match(line)
+            is_bullet = line.startswith(("- ", "* ", "• "))
+            text = line[2:].strip() if is_bullet else line
+            is_header = (
+                not skills_match and not is_bullet and len(text) <= 90 and not text.endswith(".")
+            )
+            if is_header and has_details:
+                flush()
+            current.append(line)
+            if is_header:
+                header.append(text)
+            else:
+                has_details = True
+        flush()
+
+        kept_lines = []
+        for header_lines, entry_lines in entries:
+            normalized_header = " ".join(" ".join(header_lines).casefold().split())
+            if any(organisation in normalized_header for organisation in allowed_organisations):
+                kept_lines.extend(entry_lines)
+        if kept_lines:
+            lines[start + 1:end] = kept_lines
+        else:
+            del lines[start:end]
+    return "\n".join(lines).strip()
 
 
 def _sentence_fragment(text):
@@ -3423,7 +3649,7 @@ def _join_french(items):
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " et " + items[-1] if items else ""
 
 
-def build_letter_from_base(profile, application, projects):
+def build_letter_from_base(profile, application, projects, selected_experiences=None):
     """Lettre assemblée uniquement à partir du CV de base : rien n'est inventé."""
     base = split_profile_variants(profile["base_cv"] or "")[0]
     offer = " ".join(str(application[key] or "") for key in ("position", "job_description"))
@@ -3448,8 +3674,18 @@ def build_letter_from_base(profile, application, projects):
             if skills else " je souhaite mettre mes compétences au service de vos projets."
         )
 
+    parsed_experiences = parse_base_experiences(base)
+    if selected_experiences is not None:
+        selected_keys = {
+            experience["experience_key"] for experience in selected_experiences
+        }
+        parsed_experiences = [
+            experience
+            for experience in parsed_experiences
+            if experience["experience_key"] in selected_keys
+        ]
     experiences = sorted(
-        enumerate(parse_base_experiences(base)),
+        enumerate(parsed_experiences),
         key=lambda pair: (-len(matching_labels(offer, pair[1]["text"])), pair[0]),
     )[:2]
     paragraphs = [opening]
@@ -3560,12 +3796,16 @@ def build_cv_from_base(application_id):
         return redirect(url_for("index", selected=application_id))
     base_text, variants = split_profile_variants(base)
     offer_text = " ".join(str(application[key] or "") for key in ("position", "job_description"))
+    experience_choices = ensure_application_experience_choices(application, base)
+    selected_experiences = selected_application_experiences(experience_choices)
     draft = clean_cv_draft(base_text)
     chosen = choose_profile_variant(variants, offer_text)
     if chosen:
         draft = apply_profile_variant(draft, chosen)
     draft = sort_cv_experience_sections(draft)
     draft = tailor_bullets_to_offer(draft, offer_text)
+    if experience_choices:
+        draft = filter_cv_experience_section(draft, selected_experiences)
     if detect_cv_language(draft) == "fr":
         draft = inject_selected_projects(draft, selected_application_projects(application_id))
     get_db().execute(
@@ -3591,7 +3831,20 @@ def build_letter_from_base_route(application_id):
     if not (profile["base_cv"] or "").strip():
         flash("Renseigne d'abord ton CV de base dans le profil.", "error")
         return redirect(url_for("index", selected=application_id))
-    letter = build_letter_from_base(profile, application, selected_application_projects(application_id))
+    experience_choices = ensure_application_experience_choices(
+        application, profile["base_cv"]
+    )
+    selected_experiences = (
+        selected_application_experiences(experience_choices)
+        if experience_choices
+        else None
+    )
+    letter = build_letter_from_base(
+        profile,
+        application,
+        selected_application_projects(application_id),
+        selected_experiences,
+    )
     get_db().execute(
         "UPDATE applications SET letter_draft = ?, updated_at = ? WHERE id = ?",
         (letter, datetime.now().isoformat(timespec="seconds"), application_id),

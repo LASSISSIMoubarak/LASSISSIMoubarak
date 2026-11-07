@@ -168,11 +168,33 @@
           <div class="detail-title-row"><div><p class="eyebrow">Dossier · {{ selected.company }}</p><h2>{{ selected.position }}</h2><p class="muted">{{ selected.location or 'Lieu non précisé' }}{% if selected.url %}<span class="detail-separator">·</span><a href="{{ selected.url }}" target="_blank" rel="noopener noreferrer">Voir l’offre ↗</a>{% endif %}</p></div><span class="status-pill status-large">{{ selected.status }}</span>
             <form method="post" action="{{ url_for('delete_application', application_id=selected.id) }}" onsubmit="return confirm('Supprimer définitivement cette offre et ses brouillons ?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-button" type="submit">Supprimer l’offre</button></form></div>
           {% if selected.job_description %}<details class="description-block"><summary>Description de l’offre</summary><p>{{ selected.job_description }}</p></details>{% endif %}
+            <section class="project-selection" aria-labelledby="experience-selection-title">
+              <div class="section-heading"><div><p class="eyebrow">Parcours adapté</p><h3 id="experience-selection-title">Expériences professionnelles pour cette offre</h3></div></div>
+              <p class="muted tiny">Décoche les expériences moins pertinentes. Cette sélection ne modifie pas ton CV de base et s’applique seulement à cette candidature.</p>
+              {% if experience_choices %}
+                <form method="post" action="{{ url_for('save_application_experiences', application_id=selected.id) }}" class="experience-choice-list" id="experience-selection-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  {% for experience in experience_choices %}
+                    <label class="project-choice">
+                      <input type="checkbox" name="experience_keys" value="{{ experience.experience_key }}" {% if experience.is_selected %}checked{% endif %}>
+                      <span class="project-choice-copy">
+                        <strong>{{ experience.title }}</strong>
+                        <span class="muted">{{ experience.organisation }}</span>
+                        {% if experience.bullets %}<span class="project-match">{{ experience.bullets[0] }}</span>{% endif %}
+                      </span>
+                    </label>
+                  {% endfor %}
+                  <div class="form-end"><span class="muted tiny">Les expériences décochées seront omises du CV généré.</span><button class="button button-outline" type="submit">Enregistrer les expériences</button></div>
+                </form>
+              {% else %}
+                <p class="muted">Ajoute les expériences dans ton CV de base pour pouvoir les sélectionner ici.</p>
+              {% endif %}
+            </section>
             <section class="project-selection" aria-labelledby="project-selection-title">
               <div class="section-heading"><div><p class="eyebrow">Preuves de ton parcours</p><h3 id="project-selection-title">Projets à présenter pour cette offre</h3></div>
                 <a class="open-link" href="{{ url_for('project_library') }}">Gérer ma bibliothèque ↗</a>
               </div>
-              <p class="muted tiny">Coche jusqu’à deux projets. Choisis aussi celui qui sera mis en avant dans le CV. Ta sélection actuelle sera enregistrée automatiquement quand tu génères un document.</p>
+              <p class="muted tiny">Coche jusqu’à quatre projets. Choisis aussi celui qui sera mis en avant dans le CV. Ta sélection actuelle sera enregistrée automatiquement quand tu génères un document.</p>
               {% if project_choices %}
                 <form method="post" action="{{ url_for('save_application_projects', application_id=selected.id) }}" class="project-choice-list">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -261,7 +283,7 @@
                 <label class="cloud-consent"><input type="checkbox" name="allow_cloud" value="yes"> J’accepte d’envoyer mon CV, cette offre et les exemples validés (pour l’API gratuite) au service cloud choisi pour cette génération.</label>
                 <button class="button button-outline" type="submit" {% if not can_generate %}disabled{% endif %}>Générer le brouillon</button></form>
               <form method="post" action="{{ url_for('build_letter_from_base_route', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit" {% if not profile.base_cv %}disabled title="Renseigne d'abord ton CV de base dans le profil"{% endif %}>Construire la lettre depuis mon CV de base (sans modèle)</button></form>
-              {% if selected.letter_draft %}<form method="post" action="{{ url_for('save_draft_text', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="letter"><textarea name="content" rows="18" class="draft-output" style="width:100%">{{ selected.letter_draft }}</textarea><button class="button button-outline" type="submit">Enregistrer mes modifications</button></form><div class="download-options"><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter') }}">DOCX ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter', file_format='pdf') }}">PDF ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter', file_format='tex') }}">LaTeX ↓</a></div>
+              {% if selected.letter_draft %}<p class="muted tiny">Modifie ou remplace le corps de la lettre ici. Les coordonnées, les adresses et la signature du profil ({{ profile.full_name or 'Moubarak LASSISSI' }}) restent dans le document ; aucune demande d’entretien ni formule de politesse finale n’est ajoutée automatiquement.</p><form method="post" action="{{ url_for('save_draft_text', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="letter"><textarea name="content" rows="18" class="draft-output" style="width:100%">{{ selected.letter_draft }}</textarea><button class="button button-outline" type="submit">Enregistrer mes modifications</button></form><div class="download-options"><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter') }}">DOCX ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter', file_format='pdf') }}">PDF ↓</a><a class="download-link" href="{{ url_for('download_draft', application_id=selected.id, kind='letter', file_format='tex') }}">LaTeX ↓</a></div>
               <form method="post" action="{{ url_for('save_style_example', application_id=selected.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="letter"><button class="text-button" type="submit">★ Garder comme bon exemple pour les modèles gratuits</button></form>{% endif %}
             </article>
           </div>
@@ -284,6 +306,7 @@
   </div>
   <script>
     const projectSelectionForm = document.querySelector(".project-choice-list");
+    const experienceSelectionForm = document.getElementById("experience-selection-form");
     if (projectSelectionForm) {
       const projectCheckboxes = Array.from(
         projectSelectionForm.querySelectorAll("input[name='project_ids']")
@@ -322,14 +345,28 @@
         });
       });
       projectSelectionForm.addEventListener("submit", (event) => {
-        if (checkedProjects().length > 2) {
+        if (checkedProjects().length > 4) {
           event.preventDefault();
-          window.alert("Sélectionne au maximum deux projets.");
+          window.alert("Sélectionne au maximum quatre projets.");
         }
       });
     }
     document.querySelectorAll(".generation-form").forEach((form) => {
       form.addEventListener("submit", () => {
+        if (experienceSelectionForm) {
+          const marker = document.createElement("input");
+          marker.type = "hidden";
+          marker.name = "experience_selection_submitted";
+          marker.value = "1";
+          form.appendChild(marker);
+          experienceSelectionForm.querySelectorAll("input[name='experience_keys']:checked").forEach((checkbox) => {
+            const selected = document.createElement("input");
+            selected.type = "hidden";
+            selected.name = "experience_keys";
+            selected.value = checkbox.value;
+            form.appendChild(selected);
+          });
+        }
         if (projectSelectionForm) {
           const marker = document.createElement("input");
           marker.type = "hidden";

@@ -1,0 +1,13 @@
+name: gasoline_nir_analysis
+title: gasoline_nir_analysis
+username: c4cuey-moubarak-lassissi
+account: c4cuey-moubarak-lassissi
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 18384627
+bundleId: 12790224
+url: https://c4cuey-moubarak-lassissi.shinyapps.io/gasoline_nir_analysis/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: Bookv3.pdf|conso_cars.txt|FicheTP.pdf|gasoline_nir_analysis.R|grande dimension.R|GRANDE.R|Hopx_X.rda|Hopx_Y.rda|omics.csv|Projet_statistiques en grande dimension.R|proteins.txt|ratSurvival.csv|README_GASOLINE_NIR.md|script des tp essaiew.R|Slides.pdf

@@ -627,6 +627,40 @@ PROJECT_SEEDS = (
         ),
         "public_url": "",
     },
+    {
+        "slug": "gasoline-nir-pcr-pls-shiny",
+        "title": "NIR Spectra Analysis: PCR, PLS, and Shiny Demo",
+        "summary": (
+            "NIR spectra analysis of the gasoline dataset using PCR/PLS models, "
+            "cross-validation, and an interactive Shiny demo."
+        ),
+        "description": (
+            "An educational R project based on the public gasoline dataset included "
+            "with the pls package, predicting octane rating from near-infrared spectra. "
+            "It compares PCR and PLS, uses leave-one-out cross-validation on the "
+            "calibration samples, and evaluates predictions on a separate test set. "
+            "A Shiny app lets users explore the spectra, cross-validation errors, and "
+            "predictions. The project does not use digestate samples or validate a "
+            "field spectrometer."
+        ),
+        "skills": (
+            "R, chemometrics, near-infrared spectroscopy, NIR, PCR, PLS, "
+            "cross-validation, RMSEP, RMSE, R², Shiny, pls"
+        ),
+        "keywords": (
+            "chimiométrie, chemometrics, spectroscopie NIR, spectroscopie proche infrarouge, "
+            "NIR, NIRS, spectres, spectroscopie, PCR, régression sur composantes principales, "
+            "PLS, régression PLS, validation croisée, leave-one-out, RMSEP, calibration, "
+            "modèle prédictif, chimiométrique, Shiny, R Shiny, R, gasoline, indice d'octane"
+        ),
+        "highlights": (
+            "Loaded spectra and octane ratings from the public pls::gasoline dataset",
+            "Compared PCR and PLS regression with leave-one-out cross-validation",
+            "Evaluated RMSE and R² on a held-out test set",
+            "Built a Shiny demo to explore spectra, cross-validation, and predictions",
+        ),
+        "public_url": "",
+    },
 )
 
 

@@ -220,6 +220,61 @@ class ApplicationTests(unittest.TestCase):
         self.assertNotIn("pbc-rstan-survival", recommended_general)
         self.assertNotIn("prevision-solaire-bayesienne", recommended_general)
 
+    def test_gasoline_nir_project_is_ranked_for_chemometrics_offers(self):
+        with candidatures_app.app.app_context():
+            projects = candidatures_app.get_projects()
+            ranked = candidatures_app.rank_projects(
+                "Analyse de spectres NIR, chimiométrie PLS et prototype R Shiny",
+                projects,
+            )
+
+        self.assertEqual(ranked[0]["slug"], "gasoline-nir-pcr-pls-shiny")
+        self.assertEqual(
+            ranked[0]["title"],
+            "NIR Spectra Analysis: PCR, PLS, and Shiny Demo",
+        )
+        self.assertIn("does not use digestate samples", ranked[0]["description"])
+
+    def test_existing_gasoline_project_title_is_migrated_without_overwriting_custom_title(self):
+        with candidatures_app.app.app_context():
+            database = candidatures_app.get_db()
+            database.execute(
+                """UPDATE projects SET title = ?, summary = ?
+                   WHERE slug = ?""",
+                (
+                    "Chimiométrie NIR - PCR et PLS avec Shiny",
+                    "Analyse de spectres NIR du jeu gasoline avec modèles PCR/PLS, "
+                    "validation croisée et démonstration interactive Shiny.",
+                    "gasoline-nir-pcr-pls-shiny",
+                ),
+            )
+            database.commit()
+            candidatures_app.init_db()
+            title = database.execute(
+                "SELECT title FROM projects WHERE slug = ?",
+                ("gasoline-nir-pcr-pls-shiny",),
+            ).fetchone()["title"]
+            self.assertEqual(
+                title, "NIR Spectra Analysis: PCR, PLS, and Shiny Demo"
+            )
+            summary = database.execute(
+                "SELECT summary FROM projects WHERE slug = ?",
+                ("gasoline-nir-pcr-pls-shiny",),
+            ).fetchone()["summary"]
+            self.assertIn("NIR spectra analysis", summary)
+
+            database.execute(
+                "UPDATE projects SET title = ? WHERE slug = ?",
+                ("Mon titre personnalisé", "gasoline-nir-pcr-pls-shiny"),
+            )
+            database.commit()
+            candidatures_app.init_db()
+            title = database.execute(
+                "SELECT title FROM projects WHERE slug = ?",
+                ("gasoline-nir-pcr-pls-shiny",),
+            ).fetchone()["title"]
+            self.assertEqual(title, "Mon titre personnalisé")
+
     def test_bayesian_catalog_copy_is_added_to_cv_without_coursework_framing(self):
         with candidatures_app.app.app_context():
             project = candidatures_app.get_db().execute(
@@ -356,7 +411,7 @@ class ApplicationTests(unittest.TestCase):
             self.assertNotIn("PROJETS\nSolarWatch\nUn résultat inventé", cv)
             self.assertLessEqual(len(projects), 2)
 
-    def test_cv_keeps_original_single_project_layout_for_two_selected_projects(self):
+    def test_cv_includes_both_selected_projects_in_the_original_layout(self):
         projects = [
             {
                 "title": "Projet le plus pertinent",
@@ -372,6 +427,20 @@ class ApplicationTests(unittest.TestCase):
                 "highlights": "Résultat secondaire",
                 "public_url": "",
             },
+            {
+                "title": "Projet statistique",
+                "summary": "Analyse statistique vérifiable.",
+                "skills": "R, Stan",
+                "highlights": "",
+                "public_url": "",
+            },
+            {
+                "title": "Projet supplémentaire",
+                "summary": "Autre analyse de données.",
+                "skills": "Python, SQL",
+                "highlights": "",
+                "public_url": "",
+            },
         ]
         content = candidatures_app.inject_selected_projects(
             "PROFIL\nData analyst.\nFORMATION\nMaster Data", projects
@@ -379,7 +448,9 @@ class ApplicationTests(unittest.TestCase):
         self.assertIn("Projet le plus pertinent", content)
         self.assertIn("C-index de 0,71 sur test chronologique", content)
         self.assertIn("https://github.com/example/solar", content)
-        self.assertNotIn("Projet secondaire", content)
+        self.assertIn("Projet secondaire", content)
+        self.assertIn("Projet statistique", content)
+        self.assertIn("Projet supplémentaire", content)
 
         source = candidatures_app.make_cv_latex(
             {"full_name": "Nom Exemple", "email": "", "phone": "", "location": ""},
@@ -388,7 +459,9 @@ class ApplicationTests(unittest.TestCase):
         )
         self.assertIn(r"\cvsection{Projets}", source)
         self.assertIn(r"\href{\detokenize{https://github.com/example/solar}}", source)
-        self.assertNotIn("Projet secondaire", source)
+        self.assertIn("Projet secondaire", source)
+        self.assertIn("Projet statistique", source)
+        self.assertIn("Projet supplémentaire", source)
         if candidatures_app.shutil.which("xelatex"):
             pdf = PdfReader(candidatures_app.compile_latex(source, one_page=True))
             self.assertEqual(len(pdf.pages), 1)
@@ -437,7 +510,7 @@ class ApplicationTests(unittest.TestCase):
         self.assertNotIn("Ancien projet deux", updated)
         self.assertLess(updated.index("PROJETS"), updated.index("FORMATION"))
 
-    def test_application_project_selection_is_limited_to_two(self):
+    def test_application_project_selection_is_limited_to_four(self):
         self.post_form("/applications", data={
             "company": "Exemple",
             "position": "Data",
@@ -450,15 +523,77 @@ class ApplicationTests(unittest.TestCase):
             choices = candidatures_app.ensure_application_project_choices(
                 candidatures_app.get_application(application_id)
             )
-            project_ids = [str(choice["id"]) for choice in choices[:3]]
+            project_ids = [str(choice["id"]) for choice in choices[:5]]
         response = self.post_form(
             f"/applications/{application_id}/projects",
-            data={"project_ids": project_ids},
+            data={"project_ids": project_ids[:4]},
         )
         self.assertEqual(response.status_code, 302)
         with candidatures_app.app.app_context():
             selected = candidatures_app.selected_application_projects(application_id)
-            self.assertLessEqual(len(selected), 2)
+            self.assertEqual(len(selected), 4)
+        self.post_form(
+            f"/applications/{application_id}/projects",
+            data={"project_ids": project_ids},
+        )
+        with candidatures_app.app.app_context():
+            selected = candidatures_app.selected_application_projects(application_id)
+            self.assertEqual(len(selected), 4)
+
+    def test_experience_selection_is_per_application_and_filters_base_cv(self):
+        base_cv = (
+            "PROFIL\nStatisticien.\n"
+            "EXPERIENCES PROFESSIONNELLES\n"
+            "Statisticien budgétaire\nDirection financière\n2022 - 2024\n"
+            "- Suivi budgétaire et analyse des écarts.\n"
+            "Assistant commercial\nEntreprise Exemple\n2020 - 2021\n"
+            "- Gestion des ventes et suivi des clients.\n"
+            "FORMATION\nMaster Statistique\n"
+        )
+        self.post_form("/profile", data={"resume_source": "Statisticien.", "base_cv": base_cv})
+        self.post_form("/applications", data={
+            "company": "Exemple",
+            "position": "Statisticien suivi budgétaire",
+            "job_description": "Suivi budgétaire et analyse statistique.",
+        })
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_db().execute(
+                "SELECT * FROM applications"
+            ).fetchone()
+            application_id = application["id"]
+            choices = candidatures_app.ensure_application_experience_choices(
+                application, base_cv
+            )
+            selected_key = next(
+                choice["experience_key"]
+                for choice in choices
+                if choice["organisation"] == "Direction financière"
+            )
+
+        response = self.post_form(
+            f"/applications/{application_id}/experiences",
+            data={"experience_keys": [selected_key]},
+        )
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            application = candidatures_app.get_application(application_id)
+            choices = candidatures_app.ensure_application_experience_choices(
+                application, base_cv
+            )
+            self.assertEqual(
+                [item["organisation"] for item in candidatures_app.selected_application_experiences(choices)],
+                ["Direction financière"],
+            )
+
+        response = self.post_form(
+            f"/applications/{application_id}/draft/from-base",
+            data={},
+        )
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            draft = candidatures_app.get_application(application_id)["cv_draft"]
+        self.assertIn("Direction financière", draft)
+        self.assertNotIn("Entreprise Exemple", draft)
 
     def test_project_primary_choice_is_respected_and_generation_saves_unsaved_selection(self):
         self.post_form("/profile", data={"resume_source": "Data analyst, Python, machine learning."})
@@ -517,7 +652,7 @@ class ApplicationTests(unittest.TestCase):
                 ["mlops-breast-cancer", "solarwatch"],
             )
             self.assertIn("Pipeline MLOps - classification du cancer du sein", application["cv_draft"])
-            self.assertNotIn("SolarWatch - surveillance", application["cv_draft"])
+            self.assertIn("SolarWatch - surveillance", application["cv_draft"])
 
     def test_home_page_renders_one_application_table_header(self):
         self.post_form(
@@ -1280,6 +1415,8 @@ class ApplicationTests(unittest.TestCase):
         prompt = candidatures_app.build_prompt("letter", profile, application)
         self.assertIn("entièrement en français", prompt)
         self.assertIn("exactement 4 paragraphes de prose et 140 à 180 mots", prompt)
+        self.assertIn("N'ajoute ni demande d'entretien", prompt)
+        self.assertIn("coller le texte de son choix", prompt)
         self.assertIn("il est la source de référence prioritaire et limite les faits utilisables", prompt)
         self.assertIn("ne le mentionne que s'il figure dans le CV adapté", prompt)
         self.assertIn("ne copie aucune phrase anglaise", prompt)
@@ -1439,6 +1576,32 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(generate.call_args.args[1], 600)
 
+    def test_letter_generation_removes_automatic_interview_and_formal_closing(self):
+        self.post_form("/profile", data={"resume_source": "SQL chez ACME."})
+        self.post_form("/applications", data={
+            "company": "Exemple", "position": "Data Analyst", "job_description": "SQL",
+        })
+        with candidatures_app.app.app_context():
+            application_id = candidatures_app.get_db().execute(
+                "SELECT id FROM applications"
+            ).fetchone()["id"]
+        response_body = (
+            "Ma candidature correspond aux missions documentées.\n\n"
+            "Je serai heureux de vous rencontrer lors d’un entretien.\n"
+            "Je vous prie d’agréer, Madame, Monsieur, mes salutations distinguées."
+        )
+        with patch("app.generate_with_ollama", return_value=response_body):
+            response = self.post_form(
+                f"/applications/{application_id}/draft",
+                data={"kind": "letter", "language": "fr"},
+            )
+        self.assertEqual(response.status_code, 302)
+        with candidatures_app.app.app_context():
+            saved = candidatures_app.get_application(application_id)["letter_draft"]
+        self.assertIn("Ma candidature correspond", saved)
+        self.assertNotIn("rencontrer", saved)
+        self.assertNotIn("salutations distinguées", saved)
+
     def test_letter_pdf_has_french_letter_layout_without_cv_headings(self):
         self.post_form(
             "/applications",
@@ -1462,7 +1625,7 @@ class ApplicationTests(unittest.TestCase):
                     "Baker Tilly",
                     "Motivation Letter\n\nMadame/Monsieur,\n\nÀ PROPOS\n"
                     "J'ai analyse des donnees et construit des modeles.\n\n"
-                    "Je vous prie d’agréer, Madame, Monsieur, mes salutations distinguées.",
+                    "Je vous remercie pour l’attention portée à ma candidature.",
                     "20 avenue Exemple\n49000 Angers",
                     application_id,
                 ),
@@ -1482,7 +1645,9 @@ class ApplicationTests(unittest.TestCase):
         self.assertIn("12 rue des Donnees", pdf_text)
         self.assertIn("Baker Tilly", pdf_text)
         self.assertIn("20 avenue Exemple", pdf_text)
-        self.assertIn("salutations distinguées", pdf_text)
+        self.assertIn("Je vous remercie pour l’attention portée", pdf_text)
+        self.assertNotIn("salutations distinguées", pdf_text)
+        self.assertNotIn("rencontrer lors d’un entretien", pdf_text)
         self.assertGreaterEqual(pdf_text.count("Nom Exemple"), 2)
         self.assertNotIn("Motivation Letter", pdf_text)
         self.assertNotIn("A PROPOS", pdf_text)
@@ -1512,9 +1677,8 @@ class ApplicationTests(unittest.TestCase):
             "location": "", "job_description": "SQL et Power BI.",
         }
         prompt = candidatures_app.build_prompt("cv", profile, application)
-        self.assertIn("au plus 2 activites", prompt)
-        self.assertIn("au plus les 3 experiences les plus pertinentes", prompt)
-        self.assertIn("hautement significatives", prompt)
+        self.assertIn("au plus deux puces courtes", prompt)
+        self.assertIn("les expériences documentées les plus pertinentes", prompt)
         draft = (
             "EXPERIENCES PROFESSIONNELLES\nDATA ANALYST\nACME\n2024 – 2025\n"
             "- Activité une\n- Activité deux\n- Activité trois\n- Activité quatre\n"

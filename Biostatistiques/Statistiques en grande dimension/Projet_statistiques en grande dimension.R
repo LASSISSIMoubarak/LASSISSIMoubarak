@@ -1,70 +1,87 @@
-library(pls)
-library(ggplot2)
-library(gridExtra)
-set.seed(4433)
-# Chargement des données
-data(gasoline)
-Y <- gasoline[,1]
-X <- gasoline[,2]
-n <- nrow(X)
-p <- ncol(X)
-plot(seq(900, 1700, 2), X[1, ], type="l", lwd=2, xlab="nm", ylab="NIR", main="")
-grid()
-# ACP Normée
-pca <- prcomp(X, center = TRUE, scale. = FALSE)
-summary(pca)
-# Screeplot avec ggplot
-Inertie_ex<- pca$sdev^2 / sum(pca$sdev^2) #Inertie_ex signifie Inertie Explquée par chaque composante
-data_p <- data.frame(Cp = 1:60, Variance = Inertie_ex[1:60])
+script_args <- commandArgs(trailingOnly = FALSE)
+file_arg <- grep("^--file=", script_args, value = TRUE)
+project_dir <- if (length(file_arg)) {
+  dirname(normalizePath(sub("^--file=", "", file_arg[[1]])))
+} else {
+  getwd()
+}
 
-ggplot(data_p, aes(x = factor(Cp), y = Variance)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  geom_line(aes(group = 1), color = "red", linewidth = 1) +
-  geom_point(color = "red", size = 3) +
-  labs(x = "Composante Principale", y = "Inertie Explquée par chaque composante",
-       title = "Screeplot de l'ACP") +
-  theme_minimal()
+source(file.path(project_dir, "gasoline_nir_analysis.R"))
 
-#Tirage   au sort de 50 observation , on le fait sans remise
-tirage_in <- sample(1:n, 50) #Tirage sur des indices de 50
-XTrain <- X[tirage_in, ]
-YTrain <- Y[tirage_in]
-XVal <- X[-tirage_in, ]
-YVal <- Y[-tirage_in]
+data <- load_gasoline_data()
+analysis <- fit_gasoline_model(
+  data,
+  model_type = "PCR",
+  train_fraction = 0.8,
+  seed = 4433,
+  ncomp = 6
+)
 
-# PCR avec validation croisée LOO
-PCR <- pcr(YTrain ~ XTrain, validation = "LOO", scale = TRUE)
+cat(
+  sprintf(
+    "%s — %d samples, %d wavelengths, %d for calibration and %d for testing.\n",
+    analysis$model_type,
+    nrow(data$X),
+    ncol(data$X),
+    length(analysis$train_indices),
+    length(analysis$test_indices)
+  )
+)
+cat(
+  sprintf(
+    "Components fitted: %d | Test RMSE: %.3f | Test R²: %.3f\n",
+    analysis$ncomp,
+    analysis$rmse,
+    analysis$r_squared
+  )
+)
 
-validationplot(PCR, val.type="RMSEP", type="b", pch=16)
- grid()
- #Extraction des loading et visualisation
- par(mar=c(2, 2, 2, 2))  # Réglage des marges
- par(mfrow=c(3, 2))  # Diviser la fenêtre graphique en 3 lignes et deux colonnes
- 
- # Premier composante
- plot(PCR$loadings[,1], type="l", col="blue", main="Loading 1", xlab="Index", ylab="Value")
- grid()
- 
- # Deuxième composante
- plot(PCR$loadings[,2], type="l", col="red", main="Loading 2", xlab="Index", ylab="Value")
- grid()
- 
- # Troisième composante
- plot(PCR$loadings[,3], type="l", col="green", main="Loading 3", xlab="Index", ylab="Value")
- grid()
- #Quatrième composante
- plot(PCR$loadings[,4] xlab="Index", ylab="Value")
- grid()
- #Cinquième composante
- plot(PCR$loadings[,5], type="l", col="black", main="Loading 5", xlab="Index", ylab="Value")
- grid()
- #Sixième composante
- plot(PCR$loadings[,6], type="l", col="gray", main="Loading 6", xlab="Index", ylab="Value")
- grid()
- #Calcul de RMSE de validation , il faut calculer la prediction sur les données test
- predictions <- predict(PCR, XVal,ncomp = 6)
- 
- RMSE <- sqrt(mean((predictions - YVal)^2))
- print(RMSE)
- 
- 
+graphics::par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+
+graphics::matplot(
+  data$wavelengths,
+  t(data$X[analysis$train_indices[seq_len(min(12, length(analysis$train_indices)))], , drop = FALSE]),
+  type = "l",
+  lty = 1,
+  col = grDevices::adjustcolor("#246B8E", alpha.f = 0.45),
+  xlab = "Wavelength (nm)",
+  ylab = "Absorbance",
+  main = "Example NIR spectra"
+)
+
+graphics::plot(
+  analysis$cv$components,
+  analysis$cv$rmsep,
+  type = "b",
+  pch = 16,
+  col = "#246B8E",
+  xlab = "Number of components",
+  ylab = "RMSEP (LOO cross-validation)",
+  main = "Cross-validation error"
+)
+graphics::abline(v = analysis$ncomp, lty = 2, col = "#C4543D")
+
+graphics::plot(
+  analysis$predictions$observed,
+  analysis$predictions$predicted,
+  pch = 19,
+  col = "#246B8E",
+  xlab = "Observed octane rating",
+  ylab = "Predicted octane rating",
+  main = "External test set"
+)
+graphics::abline(0, 1, lty = 2, col = "#C4543D")
+
+pca <- stats::prcomp(data$X, center = TRUE, scale. = FALSE)
+explained_variance <- pca$sdev^2 / sum(pca$sdev^2)
+visible_components <- seq_len(min(30, length(explained_variance)))
+graphics::plot(
+  visible_components,
+  explained_variance[visible_components],
+  type = "b",
+  pch = 16,
+  col = "#246B8E",
+  xlab = "Principal component",
+  ylab = "Proportion of variance explained",
+  main = "Descriptive PCA of spectra"
+)
