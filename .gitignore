@@ -90,3 +90,5 @@ Candidatures/README.md
 !/Projet BI/images/*.png
 #Le prompt pour lageneration des lettres de motivations et le cv 
 PROMPTS_CV_LETTRE_IA.md
+#Retrait du script R detection de QTL
+QTL_Detection.R
