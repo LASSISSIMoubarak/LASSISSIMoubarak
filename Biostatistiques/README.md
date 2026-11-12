@@ -1,10 +1,12 @@
 # Biostatistiques
 
-Ce dossier regroupe quatre travaux distincts. Chaque sous-dossier conserve ses
-propres scripts, notebooks et éventuelles données locales.
+Ce dossier regroupe des travaux de biostatistique et de statistique appliquée.
 
 ## Projets
 
+- [Glycémie simulée et processus stochastique en R](<./Glycemie stochastique/README.md>) -
+  projet en cours : exploration temporelle et estimation d'un processus
+  d'Ornstein-Uhlenbeck, avant l'étude de prévisions individualisées.
 - [Data Challenge QRT](<./DATA CHALLENGE QRT/README.md>) - analyse de survie,
   préparation de variables et modélisation dans des notebooks.
 - [Inference reseau](<./Inference reseau/README.md>) - scripts et notebooks
@@ -15,8 +17,3 @@ propres scripts, notebooks et éventuelles données locales.
 - `Mini Projet Annuel/` - projet de détection de QTL en R.
 - `Statistiques en grande dimension/` - analyses statistiques en grande
   dimension et fichiers de données associés.
-
-Les données de challenge, prédictions, journaux et résultats ne sont pas tous
-publiés. Vérifie leur provenance et les règles de diffusion avant tout ajout au
-dépôt. Les scripts sont des travaux d'étude ; lis leurs instructions et
-vérifie leurs entrées avant exécution.

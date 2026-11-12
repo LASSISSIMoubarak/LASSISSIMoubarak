@@ -41,6 +41,9 @@ possible, la procédure d'exécution.
 
 ### Statistiques, R et données
 
+- [Glycémie simulée et séries temporelles en R](<./Biostatistiques/Glycemie stochastique/README.md>) -
+  projet en cours : exploration de trajectoires simulées et étude prévue de
+  méthodes de prévision individualisée.
 - [NIR Spectra Analysis: PCR, PLS, and Shiny Demo](<./Biostatistiques/Statistiques en grande dimension/README_GASOLINE_NIR.md>) -
   comparaison PCR/PLS sur le jeu public `gasoline`, avec validation croisée LOO,
   évaluation sur un jeu de test séparé et démonstration interactive Shiny.
@@ -52,8 +55,8 @@ possible, la procédure d'exécution.
 - [Statistiques](<./Statistiques/README.md>) - programmation concurrente, Big Data,
   challenge de données et exercices de régression.
 - [Modélisation bayésienne](<./Modelisation Bayésienne/README.md>) - projets
-  appliqués en survie clinique et prévision solaire, ainsi que scripts et
-  supports d'exercices.
+  appliqués en survie clinique et prévision solaire ; les supports d'exercices
+  sont conservés localement.
 - [Projets R](<./R_project/README.md>) - analyses et applications en R.
 
 ### Big Data et traitement d'image

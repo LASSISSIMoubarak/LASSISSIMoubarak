@@ -1,7 +1,7 @@
 # Modélisation bayésienne
 
-Ce dossier regroupe les exercices R d'origine et des projets reproductibles
-qui appliquent l'inférence bayésienne à des données biologiques ou réelles.
+Ce dossier présente des projets reproductibles qui appliquent l'inférence
+bayésienne à des données biologiques ou réelles.
 
 ## Projets
 
@@ -12,10 +12,6 @@ qui appliquent l'inférence bayésienne à des données biologiques ou réelles.
 
 ## Exercices et supports
 
-Le sous-dossier `Quelques scripts-20241217/` contient des scripts R sur les lois
-a priori, les modèles autorégressifs et les méthodes de simulation, notamment
-acceptation-rejet, Gibbs et Metropolis-Hastings. Ce sont des exercices
-distincts, pas tous des variantes du même modèle.
-
-Les PDF sont des supports d'étude ; ils ne sont pas recopiés dans les projets
-publiables. Vérifie leurs droits de redistribution avant de les publier.
+Les scripts d'exercice et les supports d'étude sont conservés localement et ne
+font pas partie des projets publiés. Vérifie leurs droits de redistribution
+avant toute publication.
